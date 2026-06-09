@@ -1,0 +1,10 @@
+{
+  "name": "Dastan",
+  "short_name": "Dastan",
+  "description": "Local-first screenplay writing",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f1e8",
+  "theme_color": "#fbbf24",
+  "icons": []
+}
