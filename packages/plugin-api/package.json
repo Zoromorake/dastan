@@ -1,0 +1,17 @@
+{
+  "name": "@dastan/plugin-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@dastan/ai-providers": "*",
+    "@dastan/screenplay-model": "*",
+    "@tiptap/core": "^2.11.7"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1"
+  }
+}

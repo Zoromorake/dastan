@@ -1,0 +1,14 @@
+{
+  "name": "@dastan/screenplay-model",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./layout": "./src/screenplay-layout.ts",
+    "./workspace-navigation": "./src/workspace-navigation.ts"
+  },
+  "dependencies": {
+    "@tiptap/core": "^2.11.7"
+  }
+}

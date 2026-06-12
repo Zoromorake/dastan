@@ -1,0 +1,22 @@
+{
+  "name": "@dastan/local-storage",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./persistence": "./src/screenplay-persistence.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dastan/fountain-parser": "*",
+    "@dastan/screenplay-model": "*",
+    "@tiptap/core": "^2.11.7",
+    "idb": "^8.0.3"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8"
+  }
+}

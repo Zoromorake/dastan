@@ -1,13 +1,12 @@
 name: Deploy Supabase Functions
 
+# Disabled for now — re-enable by restoring push triggers.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'supabase/functions/**'
+  workflow_dispatch:
 
 jobs:
   deploy:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

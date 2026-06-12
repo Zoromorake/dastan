@@ -1,0 +1,24 @@
+{
+  "name": "@dastan/editor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./commands": "./src/commands.ts",
+    "./dual-dialogue": "./src/dual-dialogue.ts",
+    "./extensions": "./src/extensions/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dastan/screenplay-model": "*",
+    "@tiptap/core": "^2.11.7",
+    "@tiptap/pm": "^2.11.7",
+    "@tiptap/react": "^2.11.7"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8"
+  }
+}

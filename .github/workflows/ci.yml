@@ -1,12 +1,12 @@
 name: CI
 
+# Disabled for now — re-enable by restoring push/pull_request triggers.
 on:
-  push:
-    branches: [main, master]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

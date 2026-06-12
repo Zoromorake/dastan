@@ -1,12 +1,30 @@
-node_modules
-dist
-.vite
-.DS_Store
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+apps/*/dist/
+packages/*/dist/
+
+# Environment
 .env
-.env.*
-!.env.example
-coverage
-.cursor
-supabase/.temp
-*.pdf
+.env.local
+.env.*.local
+
+# Editor / IDE
+.DS_Store
+.cursor/
+*.log
+
+# Local notes and assets (not for the repo)
 todo.txt
+black-panther-2018-2.pdf
+
+# Proprietary cloud scaffold — lives in a separate private repo when implemented
+cloud/
+
+# Vite
+*.local
+
+# Test
+coverage/

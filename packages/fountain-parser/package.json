@@ -1,0 +1,20 @@
+{
+  "name": "@dastan/fountain-parser",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dastan/screenplay-model": "*",
+    "@tiptap/core": "^2.11.7",
+    "pdfjs-dist": "^6.0.227"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8"
+  }
+}
