@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./commands": "./src/commands.ts",
     "./dual-dialogue": "./src/dual-dialogue.ts",
-    "./extensions": "./src/extensions/index.ts"
+    "./extensions": "./src/extensions/index.ts",
+    "./collaboration": "./src/extensions/createCollaborationExtensions.ts"
   },
   "scripts": {
     "test": "vitest run"
@@ -15,8 +16,12 @@
   "dependencies": {
     "@dastan/screenplay-model": "*",
     "@tiptap/core": "^2.11.7",
+    "@tiptap/extension-collaboration": "^2.11.7",
+    "@tiptap/extension-collaboration-cursor": "^2.11.7",
     "@tiptap/pm": "^2.11.7",
-    "@tiptap/react": "^2.11.7"
+    "@tiptap/react": "^2.11.7",
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.27"
   },
   "devDependencies": {
     "vitest": "^4.1.8"

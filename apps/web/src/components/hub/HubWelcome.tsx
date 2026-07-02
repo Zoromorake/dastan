@@ -1,14 +1,17 @@
-import { FileText, FolderPlus, Upload } from 'lucide-react';
+import { FolderPlus } from 'lucide-react';
 import { getHubTheme } from '../../utils/hub-theme';
+import { NewScriptMenu } from './NewScriptMenu';
+import type { ScriptTemplate } from '../../utils/user-settings';
 
 interface HubWelcomeProps {
   isDark: boolean;
-  onNewScript: () => void;
-  onNewProject: () => void;
+  onStartScratch: () => void;
+  onCreateTemplate: (template: ScriptTemplate) => void;
   onImport: (file: File) => void;
+  onNewProject: () => void;
 }
 
-export function HubWelcome({ isDark, onNewScript, onNewProject, onImport }: HubWelcomeProps) {
+export function HubWelcome({ isDark, onStartScratch, onCreateTemplate, onImport, onNewProject }: HubWelcomeProps) {
   const hub = getHubTheme(isDark);
 
   return (
@@ -18,30 +21,17 @@ export function HubWelcome({ isDark, onNewScript, onNewProject, onImport }: HubW
         Start a screenplay, organize projects, or import a Fountain / Final Draft file. Everything stays on this device.
       </p>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-        <button className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${hub.accentButton}`} type="button" onClick={onNewScript}>
-          <FileText size={16} />
-          New script
-        </button>
+        <NewScriptMenu
+          isDark={isDark}
+          appearance="primary"
+          onStartScratch={onStartScratch}
+          onCreateTemplate={onCreateTemplate}
+          onImport={onImport}
+        />
         <button className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${hub.ghostButton}`} type="button" onClick={onNewProject}>
           <FolderPlus size={16} />
           New project
         </button>
-        <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${hub.ghostButton}`}>
-          <Upload size={16} />
-          Import file
-          <input
-            accept=".fountain,.fdx,.txt,.pdf"
-            className="sr-only"
-            type="file"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) {
-                onImport(file);
-              }
-              event.currentTarget.value = '';
-            }}
-          />
-        </label>
       </div>
     </section>
   );

@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Menu, Search, X } from 'lucide-react';
+import { Menu, MessageSquare, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { getTimeGreeting } from '../../utils/hub-utils';
 import { getHubTheme } from '../../utils/hub-theme';
+import { getEditorTheme } from '../../utils/editor-theme';
+import { HubBreadcrumbs, type HubBreadcrumbItem } from './HubBreadcrumbs';
+import { WritingProgressChip } from './WritingProgressChip';
 import type { HubSection } from './types';
 
 interface HubShellProps {
@@ -12,9 +14,13 @@ interface HubShellProps {
   penName: string;
   profileImageDataUrl: string | null;
   searchValue: string;
+  breadcrumbs?: HubBreadcrumbItem[];
+  chatOpen?: boolean;
   onSearchChange: (value: string) => void;
   onSectionChange: (section: HubSection) => void;
   onOpenSettings: () => void;
+  onToggleChat?: () => void;
+  headerActions?: ReactNode;
   children: ReactNode;
 }
 
@@ -126,14 +132,18 @@ export function HubShell({
   penName,
   profileImageDataUrl,
   searchValue,
+  breadcrumbs = [],
+  chatOpen = false,
   onSearchChange,
   onSectionChange,
   onOpenSettings,
+  onToggleChat,
+  headerActions,
   children,
 }: HubShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const greeting = `${getTimeGreeting()}, ${penName}`;
   const hub = getHubTheme(isDark);
+  const editorTheme = getEditorTheme(isDark);
 
   const sidebarClass = hub.sidebar;
   const dashClass = isDark ? 'border-slate-600/60' : 'border-neutral-950/20';
@@ -213,7 +223,7 @@ export function HubShell({
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
         <header className="shrink-0 border-b border-border px-4 py-4 md:px-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
               <button
                 aria-expanded={mobileNavOpen}
                 aria-label="Open navigation menu"
@@ -223,13 +233,27 @@ export function HubShell({
               >
                 <Menu size={18} strokeWidth={2.25} />
               </button>
-              <div className="min-w-0">
-                <h1 className="truncate text-xl font-semibold tracking-tight">{greeting}</h1>
-                <p className="mt-0.5 text-sm text-muted-foreground">Pick up where you left off or start something new.</p>
+              <div className="min-w-0 flex-1">
+                {activeSection === 'library' && breadcrumbs.length > 0 ? (
+                  <HubBreadcrumbs items={breadcrumbs} />
+                ) : (
+                  <h1 className="truncate text-xl font-semibold tracking-tight">
+                    {activeSection === 'library' ? 'Library' : activeSection === 'shared' ? 'Shared' : 'Trash'}
+                  </h1>
+                )}
+                {activeSection === 'library' && breadcrumbs.length === 0 ? (
+                  <p className="mt-0.5 text-sm text-muted-foreground">All your scripts and project folders.</p>
+                ) : null}
               </div>
+              {activeSection === 'library' ? (
+                <div className="shrink-0">
+                  <WritingProgressChip isDark={isDark} />
+                </div>
+              ) : null}
             </div>
 
             <div className="flex items-center gap-2">
+              {headerActions ? <div className="flex shrink-0">{headerActions}</div> : null}
               <div className="relative min-w-0 flex-1 md:w-64 md:flex-none">
                 <Search
                   aria-hidden
@@ -246,6 +270,18 @@ export function HubShell({
                   onChange={(event) => onSearchChange(event.target.value)}
                 />
               </div>
+              {onToggleChat ? (
+                <button
+                  className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition ${chatOpen ? editorTheme.chatToggleActive : editorTheme.chatToggle}`}
+                  type="button"
+                  aria-pressed={chatOpen}
+                  title="AI Chat (⌘L)"
+                  onClick={onToggleChat}
+                >
+                  <MessageSquare size={14} />
+                  <span className="hidden sm:inline">Chat</span>
+                </button>
+              ) : null}
               <button
                 className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-card text-xs font-semibold text-foreground transition hover:bg-accent"
                 type="button"

@@ -1,7 +1,8 @@
-import { getScreenplayBlocksFromContent } from '@dastan/fountain-parser';
+import { getScreenplayBlocksFromContent, formatBlockTextForExport } from '@dastan/fountain-parser';
 import type { ScreenplayBlockType, ScreenplayDocumentRecord } from '@dastan/screenplay-model';
 import { normalizeDocumentLayout, renderLayoutTemplate } from '@dastan/screenplay-model/layout';
 import { analyzeScreenplayPagination } from './screenplay-pagination';
+import { computePaginationBreakAnnotations } from './pagination-break-annotations';
 
 function escapeHtml(value: string): string {
 	return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -12,12 +13,42 @@ function blockClassName(type: ScreenplayBlockType): string {
 }
 
 function buildScriptBody(document: ScreenplayDocumentRecord): string {
+	const layout = normalizeDocumentLayout(document.layout);
 	const blocks = getScreenplayBlocksFromContent(document.content);
+	const annotations = computePaginationBreakAnnotations(
+		document.content,
+		layout.dialogueBreaks,
+		layout.sceneBreaks,
+	);
+	const annotationsByIndex = new Map(annotations.map((entry) => [entry.blockIndex, entry]));
 
 	return blocks
-		.map((block) => {
-			const text = escapeHtml(block.text) || '&nbsp;';
-			return `<p class="${blockClassName(block.type)}">${text}</p>`;
+		.map((block, index) => {
+			const parts: string[] = [];
+			const annotation = annotationsByIndex.get(index);
+
+			if (annotation?.kind === 'character_continued') {
+				parts.push(
+					`<p class="block block-character">${escapeHtml(annotation.text.toUpperCase())}</p>`,
+				);
+			}
+
+			if (annotation?.kind === 'scene_continued_top') {
+				parts.push(`<p class="block block-centered">${escapeHtml(annotation.text)}</p>`);
+			}
+
+			const text = escapeHtml(formatBlockTextForExport(block.type, block.text)) || '&nbsp;';
+			parts.push(`<p class="${blockClassName(block.type)}">${text}</p>`);
+
+			if (annotation?.kind === 'more') {
+				parts.push(`<p class="block block-centered">${escapeHtml(annotation.text)}</p>`);
+			}
+
+			if (annotation?.kind === 'scene_continued_bottom') {
+				parts.push(`<p class="block block-centered">${escapeHtml(annotation.text)}</p>`);
+			}
+
+			return parts.join('');
 		})
 		.join('');
 }

@@ -95,3 +95,28 @@ export function removeShareContact(id: string): ShareContact[] {
   saveShareContacts(next);
   return next;
 }
+
+export function updateShareContact(
+  id: string,
+  input: { name: string; email: string; role?: string },
+): ShareContact[] {
+  const normalizedEmail = input.email.trim().toLowerCase();
+
+  if (normalizedEmail.length === 0) {
+    return getShareContacts();
+  }
+
+  const next = getShareContacts().map((contact) =>
+    contact.id === id
+      ? {
+          ...contact,
+          name: input.name.trim() || normalizedEmail,
+          email: normalizedEmail,
+          role: input.role?.trim() || undefined,
+        }
+      : contact,
+  );
+
+  saveShareContacts(next);
+  return next;
+}

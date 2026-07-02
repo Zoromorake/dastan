@@ -48,7 +48,7 @@ function formatVersionLabel(version: ScreenplayVersionSnapshot): string {
     return version.label.trim();
   }
 
-  return version.isManual ? 'Manual checkpoint' : 'Autosave';
+  return version.title?.trim() || 'Untitled version';
 }
 
 export function SceneNavigator({

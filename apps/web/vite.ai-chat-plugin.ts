@@ -1,5 +1,9 @@
-import type { Plugin } from 'vite';
-import { handleChatRequest } from '@dastan/ai-providers/server';
+import type { Plugin, ViteDevServer } from 'vite';
+
+async function loadChatHandler(server: ViteDevServer) {
+	const module = await server.ssrLoadModule('@dastan/ai-providers/server');
+	return module.handleChatRequest as (request: Request) => Promise<Response>;
+}
 
 export function aiChatDevPlugin(): Plugin {
 	return {
@@ -25,7 +29,17 @@ export function aiChatDevPlugin(): Plugin {
 							for (const [key, value] of Object.entries(req.headers)) {
 								if (typeof value === 'string') {
 									headers.set(key, value);
+								} else if (Array.isArray(value)) {
+									headers.set(key, value.join(', '));
 								}
+							}
+
+							const apiKeyHeader = req.headers['x-api-key'];
+							if (apiKeyHeader) {
+								headers.set(
+									'x-api-key',
+									Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader,
+								);
 							}
 
 							const request = new Request('http://localhost/api/chat', {
@@ -34,6 +48,7 @@ export function aiChatDevPlugin(): Plugin {
 								body: Buffer.concat(chunks),
 							});
 
+							const handleChatRequest = await loadChatHandler(server);
 							const response = await handleChatRequest(request);
 							res.statusCode = response.status;
 
@@ -69,4 +84,4 @@ export function aiChatDevPlugin(): Plugin {
 			});
 		},
 	};
-}
+};

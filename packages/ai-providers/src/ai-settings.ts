@@ -8,6 +8,7 @@ export interface AiSettings {
 	globalRules: string;
 	includeScriptContext: boolean;
 	includeWorkspaceContext: boolean;
+	autoSuggestMemories: boolean;
 	chatApiUrl: string;
 }
 
@@ -23,6 +24,7 @@ export const defaultAiSettings: AiSettings = {
 	globalRules: '',
 	includeScriptContext: true,
 	includeWorkspaceContext: true,
+	autoSuggestMemories: true,
 	chatApiUrl: import.meta.env.VITE_AI_CHAT_URL ?? '/api/chat',
 };
 

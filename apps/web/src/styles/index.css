@@ -341,6 +341,11 @@ body,
     break-after: page;
   }
 
+  .ProseMirror [data-block-type].screenplay-page-break-before {
+    break-before: page;
+    page-break-before: always;
+  }
+
   .ProseMirror p.is-editor-empty:first-child::before {
     content: 'Start with INT. or EXT. then write your scene';
     color: #94a3b8;

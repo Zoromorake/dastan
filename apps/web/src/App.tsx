@@ -1,13 +1,27 @@
-import { useCallback, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { MainHubDashboard } from './components/MainHubDashboard';
-import { ScreenplayEditor } from './components/ScreenplayEditor';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { DastanAppProvider, useDastanApp } from './context/DastanAppProvider';
 import { ThemeProvider, useTheme } from './context/ThemeProvider';
 import { useScreenplayStore } from './store';
 import { getHubPathForDocument } from './utils/navigation';
 import { endWritingSession } from './utils/writing-stats';
+
+const MainHubDashboard = lazy(() =>
+	import('./components/MainHubDashboard').then((module) => ({ default: module.MainHubDashboard })),
+);
+const ScreenplayEditor = lazy(() =>
+	import('./components/ScreenplayEditor').then((module) => ({ default: module.ScreenplayEditor })),
+);
+
+function RouteLoadingFallback() {
+	return (
+		<div className="flex h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+			Loading…
+		</div>
+	);
+}
 
 function HubPage() {
 	const navigate = useNavigate();
@@ -23,14 +37,26 @@ function HubPage() {
 		[navigate, storage],
 	);
 
+	const handleNavigateToProject = useCallback(
+		(id: string | null) => {
+			navigate(id ? `/project/${id}` : '/');
+		},
+		[navigate],
+	);
+
 	return (
-		<MainHubDashboard
-			initialProjectId={projectId ?? null}
-			theme={theme}
-			resolvedTheme={resolvedTheme}
-			onThemeChange={setTheme}
-			onOpenDocument={(id) => void handleOpenDocument(id)}
-		/>
+		<ErrorBoundary label="hub">
+			<Suspense fallback={<RouteLoadingFallback />}>
+				<MainHubDashboard
+				initialProjectId={projectId ?? null}
+				theme={theme}
+				resolvedTheme={resolvedTheme}
+				onThemeChange={setTheme}
+				onNavigateToProject={handleNavigateToProject}
+				onOpenDocument={(id) => void handleOpenDocument(id)}
+			/>
+			</Suspense>
+		</ErrorBoundary>
 	);
 }
 
@@ -59,14 +85,18 @@ function EditorPage() {
 	};
 
 	return (
-		<ScreenplayEditor
-			key={documentId}
-			documentId={documentId}
-			theme={theme}
-			resolvedTheme={resolvedTheme}
-			onThemeChange={setTheme}
-			onBackToHub={handleBackToHub}
-		/>
+		<ErrorBoundary label="editor">
+			<Suspense fallback={<RouteLoadingFallback />}>
+				<ScreenplayEditor
+				key={documentId}
+				documentId={documentId}
+				theme={theme}
+				resolvedTheme={resolvedTheme}
+				onThemeChange={setTheme}
+				onBackToHub={handleBackToHub}
+			/>
+			</Suspense>
+		</ErrorBoundary>
 	);
 }
 

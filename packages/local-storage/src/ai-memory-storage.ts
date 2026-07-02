@@ -21,6 +21,8 @@ export interface AiChatMessage {
 export interface AiChatThread {
 	id: string;
 	documentId: string;
+	/** Shared collaboration room id (defaults to documentId when cloud collab is active). */
+	roomId?: string;
 	title: string;
 	model: string;
 	provider: string;
@@ -73,7 +75,7 @@ export async function listAiMemories(documentId?: string, projectId?: string): P
 
 export async function saveAiMemory(memory: AiMemory): Promise<void> {
 	const database = await getAiDatabase();
-	await database.put('ai_memories', memory);
+	await database.put('ai_memories', memory, memory.id);
 }
 
 export async function deleteAiMemory(memoryId: string): Promise<void> {
@@ -125,7 +127,7 @@ export async function saveChatThread(thread: AiChatThread): Promise<AiChatThread
 		updatedAt: new Date().toISOString(),
 	};
 
-	await database.put('chat_threads', savedThread);
+	await database.put('chat_threads', savedThread, savedThread.id);
 	return savedThread;
 }
 
@@ -136,6 +138,7 @@ export async function deleteChatThread(threadId: string): Promise<void> {
 
 export async function createChatThread(input: {
 	documentId: string;
+	roomId?: string;
 	title?: string;
 	model: string;
 	provider: string;
@@ -144,6 +147,7 @@ export async function createChatThread(input: {
 	const thread: AiChatThread = {
 		id: globalThis.crypto.randomUUID(),
 		documentId: input.documentId,
+		roomId: input.roomId,
 		title: input.title?.trim() || 'New chat',
 		model: input.model,
 		provider: input.provider,

@@ -176,6 +176,20 @@ function escapeXml(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
+/** Format block text for export to match industry conventions. */
+export function formatBlockTextForExport(type: ScreenplayBlockType, text: string): string {
+  switch (type) {
+    case 'scene_heading':
+    case 'shot':
+    case 'transition':
+      return text.toUpperCase();
+    case 'character':
+      return text.trim().replace(/\s+/gu, ' ').toUpperCase();
+    default:
+      return text;
+  }
+}
+
 function screenplayBlockTypeToFdxParagraphType(type: ScreenplayBlockType): string {
   switch (type) {
     case 'scene_heading':
@@ -253,7 +267,7 @@ export function toFinalDraftScreenplay(content: JSONContent | null, title: strin
   const paragraphs = blocks
     .map((block) => {
       const paragraphType = screenplayBlockTypeToFdxParagraphType(block.type);
-      const paragraphText = escapeXml(block.text);
+      const paragraphText = escapeXml(formatBlockTextForExport(block.type, block.text));
 
       return `      <Paragraph Type="${paragraphType}"><Text>${paragraphText}</Text></Paragraph>`;
     })

@@ -1,5 +1,5 @@
-import { anthropic } from '@ai-sdk/anthropic';
-import { openai } from '@ai-sdk/openai';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenAI } from '@ai-sdk/openai';
 import { convertToModelMessages, streamText, type UIMessage } from 'ai';
 
 export type ChatProvider = 'openai' | 'anthropic' | 'google' | 'openrouter' | 'ollama';
@@ -14,27 +14,43 @@ export interface ChatRequestBody {
 
 const defaultOllamaBaseUrl = 'http://localhost:11434/v1';
 
+/**
+ * Hard cap on how many turns are sent to the model per request. The system prompt already
+ * carries the durable context (script, workspace, memories), so once a conversation grows
+ * past this length we drop the oldest turns rather than let cost/latency grow unbounded —
+ * the client-side UI separately nudges the user to start a new chat well before this kicks in.
+ */
+const MAX_HISTORY_MESSAGES = 40;
+
+function truncateMessageHistory(messages: UIMessage[]): UIMessage[] {
+	if (messages.length <= MAX_HISTORY_MESSAGES) {
+		return messages;
+	}
+
+	return messages.slice(-MAX_HISTORY_MESSAGES);
+}
+
 function resolveModel(provider: ChatProvider, model: string, apiKey: string, ollamaBaseUrl?: string) {
 	switch (provider) {
 		case 'openai':
-			return openai(model, { apiKey });
+			return createOpenAI({ apiKey }).chat(model);
 		case 'anthropic':
-			return anthropic(model, { apiKey });
+			return createAnthropic({ apiKey })(model);
 		case 'openrouter':
-			return openai(model, {
+			return createOpenAI({
 				apiKey,
 				baseURL: 'https://openrouter.ai/api/v1',
-			});
+			}).chat(model);
 		case 'google':
-			return openai(model, {
+			return createOpenAI({
 				apiKey,
 				baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
-			});
+			}).chat(model);
 		case 'ollama':
-			return openai(model, {
+			return createOpenAI({
 				apiKey: 'ollama',
 				baseURL: ollamaBaseUrl?.trim() || defaultOllamaBaseUrl,
-			});
+			}).chat(model);
 		default:
 			throw new Error(`Unsupported provider: ${provider}`);
 	}
@@ -66,7 +82,7 @@ export async function handleChatRequest(request: Request): Promise<Response> {
 		const result = streamText({
 			model: resolveModel(provider, model, apiKey ?? 'ollama', body.ollamaBaseUrl),
 			system: body.system ?? 'You are a helpful screenplay writing assistant.',
-			messages: await convertToModelMessages(body.messages ?? []),
+			messages: await convertToModelMessages(truncateMessageHistory(body.messages ?? [])),
 		});
 
 		return result.toUIMessageStreamResponse();

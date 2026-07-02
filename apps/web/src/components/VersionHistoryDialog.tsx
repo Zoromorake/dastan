@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { createManualVersionSnapshot, getVersionHistory, restoreVersionSnapshot } from '../utils/screenplay-storage';
+import {
+	createManualVersionSnapshot,
+	deleteVersionSnapshot,
+	getVersionHistory,
+	restoreVersionSnapshot,
+} from '../utils/screenplay-storage';
 import type { ScreenplayDocumentRecord, ScreenplayVersionSnapshot } from '../types';
 import { diffScreenplayContent, summarizeDiff } from '../utils/version-diff';
 import { useScreenplayStore } from '../store';
@@ -30,6 +36,7 @@ export function VersionHistoryDialog({ open, documentId, currentContent, onResto
 	const [checkpointLabel, setCheckpointLabel] = useState('');
 	const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 	const [confirmRestoreId, setConfirmRestoreId] = useState<string | null>(null);
+	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 	const currentDocument = useScreenplayStore((state) => state.currentDocument);
 
 	const selectedVersion = useMemo(
@@ -43,12 +50,12 @@ export function VersionHistoryDialog({ open, documentId, currentContent, onResto
 		}
 
 		const lines = diffScreenplayContent(currentContent, selectedVersion.content);
-		return { lines: lines.filter((line) => line.type !== 'same').slice(0, 12), stats: summarizeDiff(lines) };
+		return { lines: lines.filter((line) => line.type !== 'same').slice(0, 40), stats: summarizeDiff(lines) };
 	}, [currentContent, selectedVersion]);
 
 	const refreshVersions = async () => {
 		const nextVersions = await getVersionHistory(documentId);
-		setVersions(nextVersions);
+		setVersions(nextVersions.sort((left, right) => right.savedAt.localeCompare(left.savedAt)));
 	};
 
 	useEffect(() => {
@@ -60,12 +67,13 @@ export function VersionHistoryDialog({ open, documentId, currentContent, onResto
 		setLoading(true);
 		setSelectedVersionId(null);
 		setConfirmRestoreId(null);
+		setConfirmDeleteId(null);
 
 		void (async () => {
 			const nextVersions = await getVersionHistory(documentId);
 
 			if (active) {
-				setVersions(nextVersions);
+				setVersions(nextVersions.sort((left, right) => right.savedAt.localeCompare(left.savedAt)));
 				setLoading(false);
 			}
 		})();
@@ -80,17 +88,20 @@ export function VersionHistoryDialog({ open, documentId, currentContent, onResto
 			<DialogContent className="max-w-2xl">
 				<DialogHeader>
 					<DialogTitle>Version History</DialogTitle>
-					<DialogDescription>Named checkpoints, autosaves, and a quick diff before you restore.</DialogDescription>
+					<DialogDescription>
+						Save a new version when you finish a draft or pass. Autosave keeps your work safe; versions are snapshots you create on demand.
+					</DialogDescription>
 				</DialogHeader>
 
 				<div className="flex gap-2">
 					<Input
-						placeholder="Checkpoint name (e.g. Act 1 polish)"
+						placeholder="Version name (e.g. Draft 2, Blue revision)"
 						value={checkpointLabel}
 						onChange={(event) => setCheckpointLabel(event.target.value)}
 					/>
 					<Button
 						type="button"
+						disabled={checkpointLabel.trim().length === 0}
 						onClick={() => {
 							if (!currentDocument) {
 								return;
@@ -103,7 +114,7 @@ export function VersionHistoryDialog({ open, documentId, currentContent, onResto
 							})();
 						}}
 					>
-						Save checkpoint
+						Save version
 					</Button>
 				</div>
 
@@ -112,39 +123,97 @@ export function VersionHistoryDialog({ open, documentId, currentContent, onResto
 						{loading ? <p className="text-sm text-muted-foreground">Loading versions...</p> : null}
 						{!loading && versions.length === 0 ? (
 							<p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-								No saved versions yet. Autosaves are created on save, or add a named checkpoint above.
+								No saved versions yet. Name and save a version when you want to keep a snapshot of this draft.
 							</p>
 						) : null}
+						{!loading && versions.length > 0 ? (
+							<p className="text-xs text-muted-foreground">Most recent first</p>
+						) : null}
 						{versions.map((version) => (
-							<button
+							<div
 								key={version.id}
-								className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition ${
+								className={`rounded-xl border transition ${
 									selectedVersionId === version.id ? 'border-primary bg-primary/5' : ''
 								}`}
-								type="button"
-								onClick={() => setSelectedVersionId(version.id)}
 							>
-								<div>
-									<p className="font-medium">
-										{version.label || version.title || 'Untitled'}
-										{version.isManual ? (
-											<span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground">checkpoint</span>
-										) : null}
-									</p>
-									<p className="text-xs text-muted-foreground">{formatVersionDate(version.savedAt)}</p>
-								</div>
-								<Button
-									variant="outline"
-									size="sm"
-									type="button"
-									onClick={(event) => {
-										event.stopPropagation();
-										setConfirmRestoreId(version.id);
+								<div
+									className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left"
+									role="button"
+									tabIndex={0}
+									onClick={() => setSelectedVersionId(version.id)}
+									onKeyDown={(event) => {
+										if (event.key === 'Enter' || event.key === ' ') {
+											event.preventDefault();
+											setSelectedVersionId(version.id);
+										}
 									}}
 								>
-									Restore
-								</Button>
-							</button>
+									<div>
+										<p className="font-medium">
+											{version.label || version.title || 'Untitled'}
+										</p>
+										<p className="text-xs text-muted-foreground">{formatVersionDate(version.savedAt)}</p>
+									</div>
+									<div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+										<Button
+											variant="outline"
+											size="sm"
+											type="button"
+											onClick={() => {
+												setConfirmDeleteId(null);
+												setConfirmRestoreId(version.id);
+											}}
+										>
+											Restore
+										</Button>
+										<Button
+											variant="ghost"
+											size="sm"
+											type="button"
+											className="size-8 px-0 text-muted-foreground hover:text-destructive"
+											aria-label="Delete version"
+											onClick={() => {
+												setConfirmRestoreId(null);
+												setConfirmDeleteId(version.id);
+											}}
+										>
+											<Trash2 size={14} />
+										</Button>
+									</div>
+								</div>
+
+								{confirmDeleteId === version.id ? (
+									<div
+										className="border-t px-4 py-3 text-sm"
+										onClick={(event) => event.stopPropagation()}
+									>
+										<p className="text-muted-foreground">Delete this version? This cannot be undone.</p>
+										<div className="mt-2 flex gap-2">
+											<Button
+												variant="destructive"
+												size="sm"
+												type="button"
+												onClick={() => {
+													void (async () => {
+														await deleteVersionSnapshot(version.id);
+														if (selectedVersionId === version.id) {
+															setSelectedVersionId(null);
+														}
+
+														setConfirmDeleteId(null);
+														await refreshVersions();
+													})();
+												}}
+											>
+												Delete
+											</Button>
+											<Button variant="outline" size="sm" type="button" onClick={() => setConfirmDeleteId(null)}>
+												Cancel
+											</Button>
+										</div>
+									</div>
+								) : null}
+							</div>
 						))}
 					</div>
 
@@ -158,7 +227,7 @@ export function VersionHistoryDialog({ open, documentId, currentContent, onResto
 								<p className="mb-3 text-xs text-muted-foreground">
 									{diffSummary.stats.added} lines added · {diffSummary.stats.removed} lines removed
 								</p>
-								<pre className="max-h-56 overflow-auto whitespace-pre-wrap text-xs leading-relaxed">
+								<pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs leading-relaxed">
 									{diffSummary.lines.map((line, index) => (
 										<span
 											key={`${line.type}-${index}`}

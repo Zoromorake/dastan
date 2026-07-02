@@ -25,6 +25,11 @@ import {
 	softDeleteDocument,
 	createManualVersionSnapshot,
 	updateProject,
+	duplicateDocument,
+	duplicateProject,
+	getTrashedProjects,
+	restoreProject,
+	permanentlyDeleteProject,
 } from '@dastan/local-storage';
 
 export const localStorageBackend: StorageBackend = {
@@ -40,6 +45,7 @@ export const localStorageBackend: StorageBackend = {
 		restore: restoreDocument,
 		permanentlyDelete: permanentlyDeleteDocument,
 		moveToProject: moveDocumentToProject,
+		duplicate: duplicateDocument,
 		loadLast: loadLastDocument,
 		setLastDocumentId,
 		createEmptyContent: createEmptyDocumentContent,
@@ -52,6 +58,10 @@ export const localStorageBackend: StorageBackend = {
 		rename: renameProject,
 		update: updateProject,
 		delete: deleteProject,
+		duplicate: duplicateProject,
+		listTrashed: getTrashedProjects,
+		restore: restoreProject,
+		permanentlyDelete: permanentlyDeleteProject,
 	},
 	versions: {
 		saveSnapshot: saveVersionSnapshot,

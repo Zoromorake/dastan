@@ -1,25 +1,35 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Check, Cloud, Copy, Link2, Share2, UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useDastanApp } from '../context/DastanAppProvider';
 import type { SharePermission } from '@dastan/plugin-api';
 import { addShareContact, getShareContacts, type ShareContact } from '../utils/share-contacts';
+import { ShareContactRow } from './ShareContactRow';
 
 interface ShareDialogProps {
   open: boolean;
   title: string;
   documentId?: string;
+  isDark?: boolean;
   onClose: () => void;
   onOpenAddressBook?: () => void;
   onShared?: () => void;
 }
 
-export function ShareDialog({ open, title, documentId, onClose, onOpenAddressBook, onShared }: ShareDialogProps) {
+const PERMISSION_OPTIONS: Array<{ value: SharePermission; label: string; description: string }> = [
+  { value: 'view', label: 'Can view', description: 'Read the script only' },
+  { value: 'comment', label: 'Can comment', description: 'View and leave notes' },
+  { value: 'edit', label: 'Can edit', description: 'Full editing access' },
+];
+
+export function ShareDialog({ open, title, documentId, isDark = false, onClose, onOpenAddressBook, onShared }: ShareDialogProps) {
   const { share, entitlements } = useDastanApp();
   const cloudSharingAvailable = entitlements.canUseCloudSync();
+  const isFolderShare = !documentId;
+
   const [contacts, setContacts] = useState<ShareContact[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [permission, setPermission] = useState<SharePermission>('comment');
@@ -28,9 +38,14 @@ export function ShareDialog({ open, title, documentId, onClose, onOpenAddressBoo
   const [note, setNote] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
 
   const shareLink = documentId
-    ? share.buildInvite({ documentId, title: title.trim() || 'Untitled Script', permission }).link
+    ? share.buildInvite({
+        documentId,
+        title: title.trim() || 'Untitled Script',
+        permission: cloudSharingAvailable ? permission : 'comment',
+      }).link
     : '';
 
   useEffect(() => {
@@ -46,6 +61,7 @@ export function ShareDialog({ open, title, documentId, onClose, onOpenAddressBoo
     setNote('');
     setLinkCopied(false);
     setStatusMessage(null);
+    setShowQuickAdd(false);
   }, [open]);
 
   const selectedContacts = useMemo(
@@ -53,244 +69,282 @@ export function ShareDialog({ open, title, documentId, onClose, onOpenAddressBoo
     [contacts, selectedIds],
   );
 
+  const toggleContact = (contactId: string, checked: boolean) => {
+    setSelectedIds((current) => {
+      if (checked) {
+        return [...current, contactId];
+      }
+
+      return current.filter((id) => id !== contactId);
+    });
+  };
+
+  const dialogTitle = cloudSharingAvailable
+    ? isFolderShare
+      ? 'Share folder'
+      : 'Share script'
+    : isFolderShare
+      ? 'Share folder · Preview'
+      : 'Share script · Preview';
+
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
-      <DialogContent className="max-w-5xl p-0 sm:max-w-5xl" showCloseButton>
-        <DialogHeader className="border-b px-6 py-5">
-          <div className="flex items-center gap-3">
-            <DialogTitle>Share</DialogTitle>
-            <Badge variant="outline">{selectedContacts.length} selected</Badge>
-            {!cloudSharingAvailable ? (
-              <Badge variant="secondary">Local only</Badge>
-            ) : null}
+      <DialogContent className="max-w-md gap-0 overflow-hidden p-0 sm:max-w-md">
+        <DialogHeader className="space-y-3 border-b px-5 py-4">
+          <div className="flex items-start gap-3">
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Share2 size={18} strokeWidth={2} />
+            </span>
+            <div className="min-w-0">
+              <DialogTitle className="text-base">{dialogTitle}</DialogTitle>
+              <DialogDescription className="truncate">{title}</DialogDescription>
+            </div>
           </div>
-          <DialogDescription>{title}</DialogDescription>
         </DialogHeader>
 
         {!cloudSharingAvailable ? (
-          <div className="border-b bg-muted/40 px-6 py-4 text-sm text-muted-foreground">
-            Share links work on this device until cloud sync is enabled. Pro includes cross-device sharing, backups, and real invite links.
-          </div>
-        ) : null}
-
-        <div className="grid min-h-[68vh] grid-cols-1 md:grid-cols-[1.1fr_0.9fr]">
-          <div className="min-h-0 overflow-y-auto border-r p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h4 className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Contacts</h4>
-              <Badge variant="secondary">Address book</Badge>
-            </div>
-
-            {contacts.length === 0 ? (
-              <Card className="border-dashed">
-                <CardContent className="p-5 text-sm text-muted-foreground">
-                  No contacts yet. Add one below or open Address Book.
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-2">
-                {contacts.map((contact) => {
-                  const selected = selectedIds.includes(contact.id);
-
-                  return (
-                    <label
-                      key={contact.id}
-                      className={`flex cursor-pointer items-center justify-between rounded-xl border px-3 py-3 transition ${
-                        selected ? 'border-emerald-300 bg-emerald-50' : 'border-border bg-card hover:bg-muted/40'
-                      }`}
-                    >
-                      <div className="min-w-0 pr-3">
-                        <p className="truncate text-sm font-medium text-foreground">{contact.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">{contact.email}</p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={(event) => {
-                          setSelectedIds((current) => {
-                            if (event.target.checked) {
-                              return [...current, contact.id];
-                            }
-
-                            return current.filter((id) => id !== contact.id);
-                          });
-                        }}
-                      />
-                    </label>
-                  );
-                })}
+          <>
+            <div className="space-y-4 px-5 py-4">
+              <div className="rounded-xl border border-border bg-muted/30 px-4 py-4">
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <Cloud size={18} strokeWidth={2} />
+                  </span>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Cloud sharing coming soon</p>
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      Real-time collaboration and cross-device invites are in development. For now, you can copy a local link to share this script on this device.
+                    </p>
+                  </div>
+                </div>
               </div>
-            )}
 
-            <Card className="mt-5">
-              <CardHeader>
-                <CardTitle>Quick add contact</CardTitle>
-                <CardDescription>Add a collaborator without leaving share flow.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3">
-                <Input placeholder="Name" value={name} onChange={(event) => setName(event.target.value)} />
-                <Input placeholder="Email" value={email} onChange={(event) => setEmail(event.target.value)} />
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      const next = addShareContact({ name, email });
-                      setContacts(next);
-                      setName('');
-                      setEmail('');
-                    }}
-                  >
-                    Add Contact
-                  </Button>
-                  {onOpenAddressBook ? (
+              {documentId && shareLink ? (
+                <section className="space-y-2">
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Local link</p>
+                  <div className="flex gap-2">
+                    <div className="relative min-w-0 flex-1">
+                      <Link2
+                        aria-hidden
+                        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                      />
+                      <Input readOnly className="h-9 pl-9 text-xs" value={shareLink} />
+                    </div>
                     <Button
-                      variant="outline"
+                      className="shrink-0"
+                      size="sm"
                       type="button"
+                      variant="outline"
                       onClick={() => {
-                        onClose();
-                        onOpenAddressBook();
+                        void share.copyLink(documentId).then((copied) => {
+                          setLinkCopied(copied);
+                        });
                       }}
                     >
-                      Open Address Book
+                      <Copy size={14} />
+                      {linkCopied ? 'Copied' : 'Copy'}
                     </Button>
+                  </div>
+                </section>
+              ) : null}
+            </div>
+
+            <DialogFooter className="border-t px-5 py-4" showCloseButton={false}>
+              <Button type="button" onClick={onClose}>
+                Close
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <div className="max-h-[min(70vh,32rem)] space-y-5 overflow-y-auto px-5 py-4">
+              <section className="space-y-2">
+                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Access level</p>
+                <div className="grid gap-2">
+                  {PERMISSION_OPTIONS.map((option) => {
+                    const active = permission === option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                          active ? 'border-primary/50 bg-primary/5' : 'border-border hover:bg-muted/40'
+                        }`}
+                        type="button"
+                        onClick={() => setPermission(option.value)}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium">{option.label}</span>
+                          {active ? <Check className="size-4 text-primary" /> : null}
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{option.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {!isFolderShare && shareLink ? (
+                <section className="space-y-2">
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Link</p>
+                  <div className="flex gap-2">
+                    <div className="relative min-w-0 flex-1">
+                      <Link2
+                        aria-hidden
+                        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                      />
+                      <Input readOnly className="h-9 pl-9 text-xs" value={shareLink} />
+                    </div>
+                    <Button
+                      className="shrink-0"
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        if (!documentId) {
+                          return;
+                        }
+
+                        void share.copyLink(documentId).then((copied) => {
+                          setLinkCopied(copied);
+                        });
+                      }}
+                    >
+                      <Copy size={14} />
+                      {linkCopied ? 'Copied' : 'Copy'}
+                    </Button>
+                  </div>
+                </section>
+              ) : null}
+
+              {isFolderShare ? (
+                <p className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+                  Folder invites will include all scripts inside. Pick contacts now — sending activates when cloud sharing ships.
+                </p>
+              ) : null}
+
+              <section className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">People</p>
+                  {selectedContacts.length > 0 ? (
+                    <Badge variant="secondary">{selectedContacts.length} selected</Badge>
                   ) : null}
                 </div>
-              </CardContent>
-            </Card>
-          </div>
 
-          <div className="min-h-0 overflow-y-auto p-5">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle>Invite settings</CardTitle>
-                  <Badge variant="outline">{permission}</Badge>
-                </div>
-                <CardDescription>Choose access level and send collaborators a note.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                <label className="grid gap-1.5">
-                  <span className="text-sm font-medium text-foreground">Permission</span>
-                  <select
-                    className="h-9 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                    value={permission}
-                    onChange={(event) => setPermission(event.target.value as SharePermission)}
-                  >
-                    <option value="view">Can view</option>
-                    <option value="comment">Can comment</option>
-                    <option value="edit">Can edit</option>
-                  </select>
-                </label>
-
-                <label className="grid gap-1.5">
-                  <span className="text-sm font-medium text-foreground">Note</span>
-                  <textarea
-                    className="min-h-28 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                    placeholder="Add a message for collaborators"
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
-                  />
-                </label>
-              </CardContent>
-            </Card>
-
-            {shareLink ? (
-              <Card className="mt-4">
-                <CardHeader>
-                  <CardTitle>Share link</CardTitle>
-                  <CardDescription>
-                    {cloudSharingAvailable
-                      ? 'Copy a direct link collaborators can open anywhere.'
-                      : 'Copy a direct link to this script on this device.'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-3">
-                  <Input readOnly value={shareLink} />
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      if (!documentId) {
-                        return;
-                      }
-
-                      void share.copyLink(documentId).then((copied) => {
-                        setLinkCopied(copied);
-                      });
-                    }}
-                  >
-                    {linkCopied ? 'Copied' : 'Copy link'}
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : null}
-
-            <Card className="mt-4">
-              <CardHeader>
-                <CardTitle>Recipients</CardTitle>
-                <CardDescription>Selected collaborators for this invite.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {selectedContacts.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No recipients selected.</p>
+                {contacts.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">
+                    No contacts yet. Add someone below.
+                  </p>
                 ) : (
-                  <ul className="space-y-2 text-sm text-foreground">
-                    {selectedContacts.map((contact) => (
-                      <li key={contact.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
-                        <span className="min-w-0 truncate">{contact.name} ({contact.email})</span>
-                        <Badge variant="secondary">{permission}</Badge>
-                      </li>
+                  <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
+                    {contacts.map((contact) => (
+                      <ShareContactRow
+                        key={contact.id}
+                        contact={contact}
+                        isDark={isDark}
+                        selectable
+                        selected={selectedIds.includes(contact.id)}
+                        onToggleSelect={toggleContact}
+                      />
                     ))}
-                  </ul>
+                  </div>
                 )}
-              </CardContent>
-            </Card>
 
-            {statusMessage ? (
-              <p className="mt-4 text-sm text-muted-foreground">{statusMessage}</p>
-            ) : null}
-          </div>
-        </div>
+                {showQuickAdd ? (
+                  <div className="space-y-2 rounded-xl border border-border bg-muted/20 p-3">
+                    <Input placeholder="Name" value={name} onChange={(event) => setName(event.target.value)} />
+                    <Input placeholder="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        type="button"
+                        onClick={() => {
+                          const next = addShareContact({ name, email });
+                          setContacts(next);
+                          setName('');
+                          setEmail('');
+                          setShowQuickAdd(false);
+                        }}
+                      >
+                        Save contact
+                      </Button>
+                      <Button size="sm" type="button" variant="ghost" onClick={() => setShowQuickAdd(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" type="button" variant="outline" onClick={() => setShowQuickAdd(true)}>
+                      <UserPlus size={14} />
+                      Add contact
+                    </Button>
+                    {onOpenAddressBook ? (
+                      <Button size="sm" type="button" variant="ghost" onClick={() => { onClose(); onOpenAddressBook(); }}>
+                        Address book
+                      </Button>
+                    ) : null}
+                  </div>
+                )}
+              </section>
 
-        <DialogFooter className="px-6" showCloseButton={false}>
-          <Button
-            variant="outline"
-            type="button"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            disabled={selectedContacts.length === 0 || !documentId}
-            onClick={() => {
-              if (!documentId) {
-                return;
-              }
+              <section className="space-y-2">
+                <label className="text-xs font-medium tracking-wide text-muted-foreground uppercase" htmlFor="share-note">
+                  Message <span className="font-normal normal-case">(optional)</span>
+                </label>
+                <textarea
+                  id="share-note"
+                  className="min-h-20 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  placeholder="Add a note for collaborators"
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                />
+              </section>
 
-              const names = selectedContacts.map((contact) => contact.name);
+              {statusMessage ? (
+                <p className="text-sm text-destructive">{statusMessage}</p>
+              ) : null}
+            </div>
 
-              void share
-                .sendInvite({
-                  documentId,
-                  title,
-                  permission,
-                  recipientNames: names,
-                  contactIds: selectedIds,
-                  note,
-                })
-                .then((sent) => {
-                  if (sent) {
-                    onShared?.();
-                    onClose();
+            <DialogFooter className="border-t px-5 py-4" showCloseButton={false}>
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={selectedContacts.length === 0 || isFolderShare}
+                onClick={() => {
+                  if (!documentId) {
                     return;
                   }
 
-                  setStatusMessage('Could not copy invite text. Check clipboard permissions and try again.');
-                });
-            }}
-          >
-            Send Invite
-          </Button>
-        </DialogFooter>
+                  const names = selectedContacts.map((contact) => contact.name);
+
+                  void share
+                    .sendInvite({
+                      documentId,
+                      title,
+                      permission,
+                      recipientNames: names,
+                      contactIds: selectedIds,
+                      note,
+                    })
+                    .then((sent) => {
+                      if (sent) {
+                        onShared?.();
+                        onClose();
+                        return;
+                      }
+
+                      setStatusMessage('Could not copy invite text. Check clipboard permissions and try again.');
+                    });
+                }}
+              >
+                Send invite
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

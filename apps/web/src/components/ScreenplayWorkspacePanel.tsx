@@ -17,6 +17,12 @@ import {
 	mergeStructureBeatsWithTemplate,
 	STRUCTURE_TEMPLATE_LABELS,
 } from '../utils/story-structure';
+import {
+	autoMapStructureBeatsToScenes,
+	analyzeStructureCoverage,
+	buildStructureCoveragePrompt,
+	getSceneLabel,
+} from '../utils/structure-coverage';
 import { getWorkspaceTheme } from '../utils/workspace-theme';
 
 interface ScreenplayWorkspacePanelProps {
@@ -29,6 +35,7 @@ interface ScreenplayWorkspacePanelProps {
 	onTitleChange: (title: string) => void;
 	onWorkspaceChange: (workspace: Partial<ScreenplayWorkspaceData>) => void;
 	onSceneSelect: (sceneIndex: number) => void;
+	onRequestStructureReview?: (prompt: string) => void;
 }
 
 interface CharacterStats {
@@ -112,6 +119,8 @@ function buildDefaultBeatBoard(scenes: SceneHeadingSummary[], blocks: Screenplay
 	return beats;
 }
 
+const PANEL_CONTENT_CLASS = 'mx-auto w-full max-w-2xl';
+
 function PanelHeader({
 	title,
 	subtitle,
@@ -161,6 +170,7 @@ export function ScreenplayWorkspacePanel({
 	onTitleChange,
 	onWorkspaceChange,
 	onSceneSelect,
+	onRequestStructureReview,
 }: ScreenplayWorkspacePanelProps) {
 	const isDark = resolvedTheme === 'dark';
 	const theme = getWorkspaceTheme(isDark);
@@ -193,6 +203,19 @@ export function ScreenplayWorkspacePanel({
 			structureBeats: structureBeats.map((beat) => (beat.id === beatId ? { ...beat, summary } : beat)),
 		});
 	};
+
+	const updateStructureBeatScene = (beatId: string, linkedSceneIndex: number | undefined) => {
+		updateDevelopment({
+			structureBeats: structureBeats.map((beat) =>
+				beat.id === beatId ? { ...beat, linkedSceneIndex } : beat,
+			),
+		});
+	};
+
+	const structureCoverage = useMemo(
+		() => analyzeStructureCoverage(structureBeats, scenes),
+		[structureBeats, scenes],
+	);
 
 	const reorderStructureBeats = (sourceId: string, targetId: string) => {
 		if (sourceId === targetId) {
@@ -517,7 +540,7 @@ export function ScreenplayWorkspacePanel({
 					title="Story Basics"
 				/>
 
-				<div className="space-y-4">
+				<div className={`space-y-4 ${PANEL_CONTENT_CLASS}`}>
 					<label className="block space-y-1.5">
 						<span className={`text-xs font-medium uppercase tracking-[0.12em] ${theme.muted}`}>Title</span>
 						<input
@@ -601,6 +624,52 @@ export function ScreenplayWorkspacePanel({
 					title="Story Structure"
 				/>
 
+				<div className={PANEL_CONTENT_CLASS}>
+				<div className="mb-4 flex flex-wrap items-center gap-2">
+					<span className={theme.chip}>{structureCoverage.scorePercent}% coverage</span>
+					<span className={`text-xs ${theme.muted}`}>
+						{structureCoverage.filledBeats}/{structureCoverage.totalBeats} beats filled
+						{scenes.length > 0
+							? ` · ${structureCoverage.linkedBeats} linked · ${structureCoverage.unmappedScenes} scenes unmapped`
+							: ''}
+					</span>
+					{scenes.length > 0 ? (
+						<button
+							className={`ml-auto ${theme.button}`}
+							type="button"
+							onClick={() =>
+								updateDevelopment({
+									structureBeats: autoMapStructureBeatsToScenes(structureBeats, scenes),
+								})
+							}
+						>
+							Map beats to scenes
+						</button>
+					) : null}
+					{onRequestStructureReview ? (
+						<button
+							className={theme.button}
+							type="button"
+							onClick={() => onRequestStructureReview(buildStructureCoveragePrompt(structureCoverage))}
+						>
+							Ask AI for coverage
+						</button>
+					) : null}
+				</div>
+
+				{structureCoverage.issues.length > 0 ? (
+					<div className={`mb-5 rounded-xl border p-3 text-xs ${isDark ? 'border-amber-800/60 bg-amber-950/20 text-amber-100' : 'border-amber-200 bg-amber-50 text-amber-950'}`}>
+						<p className="font-medium">Gaps to address</p>
+						<ul className="mt-2 space-y-1">
+							{structureCoverage.issues.slice(0, 6).map((issue) => (
+								<li key={`${issue.beatId}-${issue.kind}`}>
+									{issue.beatLabel}: {issue.detail}
+								</li>
+							))}
+						</ul>
+					</div>
+				) : null}
+
 				<div className="mb-5 flex flex-wrap gap-2">
 					{(Object.keys(STRUCTURE_TEMPLATE_LABELS) as StructureTemplate[]).map((template) => (
 						<button
@@ -628,6 +697,42 @@ export function ScreenplayWorkspacePanel({
 								<span className={`text-sm font-semibold ${theme.heading}`}>{beat.label}</span>
 								{beat.pageHint ? <span className={`text-xs ${theme.muted}`}>· {beat.pageHint}</span> : null}
 							</div>
+							{scenes.length > 0 ? (
+								<div className="mb-2 flex flex-wrap items-center gap-2">
+									<label className={`text-xs ${theme.muted}`} htmlFor={`scene-link-${beat.id}`}>
+										Scene
+									</label>
+									<select
+										className={theme.input}
+										id={`scene-link-${beat.id}`}
+										value={beat.linkedSceneIndex ?? ''}
+										onChange={(event) => {
+											const value = event.target.value;
+
+											updateStructureBeatScene(
+												beat.id,
+												value === '' ? undefined : Number(value),
+											);
+										}}
+									>
+										<option value="">Unlinked</option>
+										{scenes.map((scene) => (
+											<option key={scene.index} value={scene.index}>
+												{scene.text}
+											</option>
+										))}
+									</select>
+									{typeof beat.linkedSceneIndex === 'number' ? (
+										<button
+											className={`text-xs underline ${theme.muted}`}
+											type="button"
+											onClick={() => onSceneSelect(beat.linkedSceneIndex!)}
+										>
+											Go to scene
+										</button>
+									) : null}
+								</div>
+							) : null}
 							<textarea
 								className={theme.textarea}
 								placeholder="What happens at this beat?"
@@ -635,8 +740,14 @@ export function ScreenplayWorkspacePanel({
 								value={beat.summary}
 								onChange={(event) => updateStructureBeat(beat.id, event.target.value)}
 							/>
+							{typeof beat.linkedSceneIndex === 'number' ? (
+								<p className={`mt-2 text-xs ${theme.muted}`}>
+									Linked: {getSceneLabel(scenes, beat.linkedSceneIndex)}
+								</p>
+							) : null}
 						</article>
 					))}
+				</div>
 				</div>
 			</section>
 		);
@@ -654,6 +765,7 @@ export function ScreenplayWorkspacePanel({
 					title="Beat Board"
 				/>
 
+				<div className={PANEL_CONTENT_CLASS}>
 				<div
 					className={`mb-5 inline-flex rounded-xl border p-1 ${isDark ? 'border-slate-700 bg-slate-900/60' : 'border-stone-200 bg-stone-50'}`}
 				>
@@ -800,6 +912,7 @@ export function ScreenplayWorkspacePanel({
 						))}
 					</div>
 				)}
+				</div>
 			</section>
 		);
 	}
@@ -812,12 +925,14 @@ export function ScreenplayWorkspacePanel({
 					theme={theme}
 					title="Treatment"
 				/>
+				<div className={PANEL_CONTENT_CLASS}>
 				<textarea
 					className={`${theme.textarea} min-h-[28rem] font-serif text-base leading-7`}
 					placeholder="Write your treatment in present tense. Describe how the film reads from opening to final image…"
 					value={development.treatment}
 					onChange={(event) => updateDevelopment({ treatment: event.target.value })}
 				/>
+				</div>
 			</section>
 		);
 	}
@@ -832,6 +947,7 @@ export function ScreenplayWorkspacePanel({
 					title="Scene Outline"
 				/>
 
+				<div className={PANEL_CONTENT_CLASS}>
 				{sceneBeats.length > 0 ? (
 					<div className="mb-5 grid grid-cols-3 gap-3">
 						<StatTile label="Scenes" theme={theme} value={outlineStats.total} />
@@ -886,6 +1002,7 @@ export function ScreenplayWorkspacePanel({
 						})}
 					</div>
 				)}
+				</div>
 			</section>
 		);
 	}
@@ -900,6 +1017,7 @@ export function ScreenplayWorkspacePanel({
 					title="Characters"
 				/>
 
+				<div className={PANEL_CONTENT_CLASS}>
 				{characterStats.length > 0 ? (
 					<div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
 						<StatTile label="Characters" theme={theme} value={characterSummary.count} />
@@ -966,6 +1084,7 @@ export function ScreenplayWorkspacePanel({
 						})}
 					</div>
 				)}
+				</div>
 			</section>
 		);
 	}
@@ -980,6 +1099,7 @@ export function ScreenplayWorkspacePanel({
 					title="Locations"
 				/>
 
+				<div className={PANEL_CONTENT_CLASS}>
 				{locationStats.length === 0 ? (
 					<p className={theme.empty}>
 						No locations detected. Scene headings should look like INT. KITCHEN - NIGHT.
@@ -1037,6 +1157,7 @@ export function ScreenplayWorkspacePanel({
 						})}
 					</div>
 				)}
+				</div>
 			</section>
 		);
 	}
@@ -1052,6 +1173,7 @@ export function ScreenplayWorkspacePanel({
 				title="Notes"
 			/>
 
+			<div className={PANEL_CONTENT_CLASS}>
 			<div
 				className={`mb-5 inline-flex rounded-xl border p-1 ${isDark ? 'border-slate-700 bg-slate-900/60' : 'border-stone-200 bg-stone-50'}`}
 			>
@@ -1133,6 +1255,7 @@ export function ScreenplayWorkspacePanel({
 					})}
 				</div>
 			)}
+			</div>
 		</section>
 	);
 }

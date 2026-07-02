@@ -33,6 +33,12 @@ const shortcutGroups = [
 		],
 	},
 	{
+		title: 'Navigation',
+		items: [
+			['⌘,', 'Settings'],
+		],
+	},
+	{
 		title: 'Workspace',
 		items: [
 			['⌘S', 'Save'],
@@ -41,6 +47,7 @@ const shortcutGroups = [
 			['⌘⇧G', 'Find previous match'],
 			['⌘\\', 'Toggle sidebar'],
 			['⌘L', 'Toggle AI chat'],
+			['⌘⇧T', 'Typewriter mode'],
 			['⌘.', 'Focus mode'],
 			['?', 'Keyboard shortcuts'],
 		],

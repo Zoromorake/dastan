@@ -1,18 +1,28 @@
 import type { JSONContent } from '@tiptap/core';
 import type { ScreenplayWorkspaceData } from '../types';
 import type { AiMemory } from './ai-memory-storage';
+import type { CollaboratorPresence } from '@dastan/plugin-api';
+import { formatScopedMemories } from './ai-memory-format';
+import type { AiInteractionMode } from './ai-interaction-mode';
+import { getInteractionModeInstructions } from './ai-interaction-mode';
 import { toPlainTextScreenplay } from './screenplay-text';
+import { buildSmartScriptContext } from './ai-context-script';
 
-const MAX_SCRIPT_CHARS = 24_000;
+export const MAX_SCRIPT_CHARS = 24_000;
 
 export interface AiContextInput {
+	documentId: string;
 	documentTitle: string;
 	documentContent: JSONContent | null;
 	workspace: ScreenplayWorkspaceData;
 	globalRules: string;
 	memories: AiMemory[];
+	projectId?: string;
 	includeScriptContext: boolean;
 	includeWorkspaceContext: boolean;
+	selectionText?: string | null;
+	interactionMode?: AiInteractionMode;
+	activeCollaborators?: CollaboratorPresence[];
 }
 
 export interface AiContextPayload {
@@ -27,27 +37,7 @@ function truncateText(text: string, maxChars: number): string {
 	return `${text.slice(0, maxChars)}\n\n[Script truncated for context window]`;
 }
 
-function formatMemories(memories: AiMemory[], scope: AiMemory['scope'], documentId?: string): string {
-	const scoped = memories.filter((memory) => {
-		if (memory.scope !== scope) {
-			return false;
-		}
-
-		if (scope === 'document') {
-			return memory.documentId === documentId;
-		}
-
-		return true;
-	});
-
-	if (scoped.length === 0) {
-		return '';
-	}
-
-	return scoped.map((memory) => `- ${memory.content}`).join('\n');
-}
-
-function formatWorkspaceSummary(workspace: ScreenplayWorkspaceData): string {
+export function formatWorkspaceSummary(workspace: ScreenplayWorkspaceData): string {
 	const sections: string[] = [];
 
 	if (workspace.globalNotes.trim()) {
@@ -101,7 +91,11 @@ function formatWorkspaceSummary(workspace: ScreenplayWorkspaceData): string {
 		const structureLines = [...structureBeats]
 			.sort((left, right) => left.order - right.order)
 			.slice(0, 16)
-			.map((beat) => `${beat.label}: ${beat.summary || '(empty)'}`)
+			.map((beat) => {
+				const sceneNote =
+					typeof beat.linkedSceneIndex === 'number' ? ` [scene @ block ${beat.linkedSceneIndex}]` : '';
+				return `${beat.label}: ${beat.summary || '(empty)'}${sceneNote}`;
+			})
 			.join('\n');
 
 		sections.push(`Story structure:\n${structureLines}`);
@@ -124,24 +118,44 @@ function formatWorkspaceSummary(workspace: ScreenplayWorkspaceData): string {
 	return sections.join('\n\n');
 }
 
+export function getScriptCharCount(documentContent: JSONContent | null): number {
+	if (!documentContent) {
+		return 0;
+	}
+
+	return toPlainTextScreenplay(documentContent).length;
+}
+
 export function buildAiContext(input: AiContextInput): AiContextPayload {
 	const sections: string[] = [
 		'You are a screenplay writing assistant for Dastan, a professional script editor.',
 		'Help the writer with structure, dialogue, pacing, character arcs, and industry-standard formatting.',
-		'Be concise and actionable. When suggesting rewrites, preserve the writer\'s voice.',
+		getInteractionModeInstructions(input.interactionMode ?? 'writer'),
 	];
 
 	if (input.globalRules.trim()) {
 		sections.push(`Writer rules:\n${input.globalRules.trim()}`);
 	}
 
-	const globalMemories = formatMemories(input.memories, 'global');
+	const memoryOptions = {
+		documentId: input.documentId,
+		projectId: input.projectId,
+		pinnedOnly: true,
+	};
+
+	const globalMemories = formatScopedMemories(input.memories, 'global', memoryOptions);
 
 	if (globalMemories) {
 		sections.push(`Pinned global memories:\n${globalMemories}`);
 	}
 
-	const documentMemories = formatMemories(input.memories, 'document');
+	const projectMemories = formatScopedMemories(input.memories, 'project', memoryOptions);
+
+	if (projectMemories) {
+		sections.push(`Project memories:\n${projectMemories}`);
+	}
+
+	const documentMemories = formatScopedMemories(input.memories, 'document', memoryOptions);
 
 	if (documentMemories) {
 		sections.push(`Pinned script memories:\n${documentMemories}`);
@@ -149,8 +163,14 @@ export function buildAiContext(input: AiContextInput): AiContextPayload {
 
 	sections.push(`Current script title: "${input.documentTitle}"`);
 
-	if (input.includeScriptContext && input.documentContent) {
-		const scriptText = truncateText(toPlainTextScreenplay(input.documentContent), MAX_SCRIPT_CHARS);
+	const selection = input.selectionText?.trim();
+
+	if (selection) {
+		sections.push(`Current selection (user highlighted this text):\n${selection.slice(0, 4000)}`);
+	}
+
+	if (input.includeScriptContext && !selection && input.documentContent) {
+		const scriptText = buildSmartScriptContext(input.documentContent, input.workspace, MAX_SCRIPT_CHARS);
 
 		if (scriptText.trim()) {
 			sections.push(`Current screenplay:\n${scriptText}`);
@@ -163,6 +183,22 @@ export function buildAiContext(input: AiContextInput): AiContextPayload {
 		if (workspaceSummary.trim()) {
 			sections.push(`Workspace context:\n${workspaceSummary}`);
 		}
+	}
+
+	const collaborators = input.activeCollaborators?.filter((peer) => peer.name.trim().length > 0) ?? [];
+
+	if (collaborators.length > 0) {
+		const collaboratorLines = collaborators
+			.map((peer) => {
+				const cursor =
+					typeof peer.cursorBlockIndex === 'number'
+						? ` (editing near block ${peer.cursorBlockIndex + 1})`
+						: '';
+				return `- ${peer.name}${cursor}`;
+			})
+			.join('\n');
+
+		sections.push(`Active collaborators in this writing room:\n${collaboratorLines}`);
 	}
 
 	return {

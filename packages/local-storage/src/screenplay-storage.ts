@@ -9,9 +9,9 @@ import {
 	type ScreenplayDocumentRecord,
 	type ScreenplayProjectRecord,
 	type ScreenplayVersionSnapshot,
+	type ScreenplayWorkspaceData,
+	type ScriptTemplate,
 } from '@dastan/screenplay-model';
-import { recordRecentDocument } from './recent-documents';
-
 interface DastanDatabase extends DBSchema {
 	documents: {
 		key: string;
@@ -83,7 +83,13 @@ function createDocumentRecord(id: string, content: JSONContent = defaultContent,
 	};
 }
 
-function createDocumentRecordWithTitle(id: string, title: string, content: JSONContent = defaultContent, projectId?: string): ScreenplayDocumentRecord {
+function createDocumentRecordWithTitle(
+	id: string,
+	title: string,
+	content: JSONContent = defaultContent,
+	projectId?: string,
+	workspace?: ScreenplayWorkspaceData,
+): ScreenplayDocumentRecord {
 	const now = new Date().toISOString();
 
 	return {
@@ -93,15 +99,16 @@ function createDocumentRecordWithTitle(id: string, title: string, content: JSONC
 		updatedAt: now,
 		projectId,
 		layout: createDefaultDocumentLayout(),
-		workspace: createDefaultWorkspaceData(),
+		workspace: workspace ?? createDefaultWorkspaceData(),
 		content,
 	};
 }
 
-function createProjectRecord(title: string): ScreenplayProjectRecord {
+function createProjectRecord(title: string, parentProjectId?: string | null): ScreenplayProjectRecord {
 	return normalizeProjectRecord({
 		id: globalThis.crypto.randomUUID(),
 		title,
+		parentProjectId: parentProjectId ?? null,
 		updatedAt: new Date().toISOString(),
 	});
 }
@@ -191,7 +198,6 @@ export async function saveDocument(document: ScreenplayDocumentRecord): Promise<
 
 	await database.put('documents', snapshot, snapshot.id);
 	await setLastDocumentId(snapshot.id);
-	recordRecentDocument(snapshot.id);
 }
 
 export async function saveVersionSnapshot(document: ScreenplayDocumentRecord): Promise<void> {
@@ -288,6 +294,11 @@ export async function restoreVersionSnapshot(versionId: string): Promise<Screenp
 	return restoredDocument;
 }
 
+export async function deleteVersionSnapshot(versionId: string): Promise<void> {
+	const database = await getDatabase();
+	await database.delete('versions', versionId);
+}
+
 export async function getAllDocuments(): Promise<ScreenplayDocumentRecord[]> {
 	const database = await getDatabase();
 	const documents = await database.getAll('documents');
@@ -306,19 +317,35 @@ export async function getTrashedDocuments(): Promise<ScreenplayDocumentRecord[]>
 		.sort((left, right) => (right.deletedAt ?? '').localeCompare(left.deletedAt ?? ''));
 }
 
-export async function createDocument(title: string, content: JSONContent = defaultContent, projectId?: string): Promise<ScreenplayDocumentRecord> {
+export async function createDocument(
+	title: string,
+	content: JSONContent = defaultContent,
+	projectId?: string,
+	workspace?: ScreenplayWorkspaceData,
+): Promise<ScreenplayDocumentRecord> {
 	const database = await getDatabase();
-	const document = createDocumentRecordWithTitle(globalThis.crypto.randomUUID(), title, content, projectId);
+	const document = createDocumentRecordWithTitle(globalThis.crypto.randomUUID(), title, content, projectId, workspace);
 	await database.put('documents', document, document.id);
 	await setLastDocumentId(document.id);
-	recordRecentDocument(document.id);
 	return document;
 }
 
 export async function getAllProjects(): Promise<ScreenplayProjectRecord[]> {
 	const database = await getDatabase();
 	const projects = await database.getAll('projects');
-	return projects.map(normalizeProjectRecord).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+	return projects
+		.filter((project) => !project.deletedAt)
+		.map(normalizeProjectRecord)
+		.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+export async function getTrashedProjects(): Promise<ScreenplayProjectRecord[]> {
+	const database = await getDatabase();
+	const projects = await database.getAll('projects');
+	return projects
+		.filter((project) => project.deletedAt)
+		.map(normalizeProjectRecord)
+		.sort((left, right) => (right.deletedAt ?? '').localeCompare(left.deletedAt ?? ''));
 }
 
 export async function getProjectById(id: string): Promise<ScreenplayProjectRecord | null> {
@@ -332,9 +359,18 @@ export async function getProjectById(id: string): Promise<ScreenplayProjectRecor
 	return normalizeProjectRecord(project);
 }
 
-export async function createProject(title: string): Promise<ScreenplayProjectRecord> {
+export async function createProject(title: string, parentProjectId?: string | null): Promise<ScreenplayProjectRecord> {
 	const database = await getDatabase();
-	const project = createProjectRecord(title);
+
+	if (parentProjectId) {
+		const parentProject = await database.get('projects', parentProjectId);
+
+		if (!parentProject) {
+			throw new Error('Parent project not found');
+		}
+	}
+
+	const project = createProjectRecord(title, parentProjectId);
 	await database.put('projects', project, project.id);
 	return project;
 }
@@ -345,7 +381,7 @@ export async function renameProject(id: string, title: string): Promise<Screenpl
 
 export async function updateProject(
 	id: string,
-	updates: Partial<Pick<ScreenplayProjectRecord, 'title' | 'genre' | 'logline' | 'synopsis' | 'coverImageDataUrl'>>,
+	updates: Partial<Pick<ScreenplayProjectRecord, 'title' | 'parentProjectId' | 'genre' | 'logline' | 'synopsis' | 'coverImageDataUrl'>>,
 ): Promise<ScreenplayProjectRecord | null> {
 	const database = await getDatabase();
 	const project = await database.get('projects', id);
@@ -366,7 +402,34 @@ export async function updateProject(
 
 export async function deleteProject(id: string): Promise<void> {
 	const database = await getDatabase();
-	await database.delete('projects', id);
+	const project = await database.get('projects', id);
+
+	if (!project) {
+		return;
+	}
+
+	const projects = await database.getAll('projects');
+	const childProjects = projects.filter((entry) => entry.parentProjectId === id);
+
+	for (const childProject of childProjects) {
+		await database.put(
+			'projects',
+			normalizeProjectRecord({
+				...childProject,
+				parentProjectId: project.parentProjectId ?? null,
+				updatedAt: new Date().toISOString(),
+			}),
+			childProject.id,
+		);
+	}
+
+	const trashedProject = normalizeProjectRecord({
+		...project,
+		deletedAt: new Date().toISOString(),
+		updatedAt: new Date().toISOString(),
+	});
+
+	await database.put('projects', trashedProject, trashedProject.id);
 
 	const documents = await getAllDocuments();
 
@@ -383,6 +446,75 @@ export async function deleteProject(id: string): Promise<void> {
 			);
 		}
 	}
+}
+
+export async function restoreProject(id: string): Promise<ScreenplayProjectRecord | null> {
+	const database = await getDatabase();
+	const project = await database.get('projects', id);
+
+	if (!project || !project.deletedAt) {
+		return null;
+	}
+
+	const restoredProject = normalizeProjectRecord({
+		...project,
+		deletedAt: undefined,
+		updatedAt: new Date().toISOString(),
+	});
+
+	await database.put('projects', restoredProject, restoredProject.id);
+	return restoredProject;
+}
+
+export async function permanentlyDeleteProject(id: string): Promise<void> {
+	const database = await getDatabase();
+	await database.delete('projects', id);
+}
+
+export async function duplicateDocument(id: string): Promise<ScreenplayDocumentRecord | null> {
+	const database = await getDatabase();
+	const document = await database.get('documents', id);
+
+	if (!document || document.deletedAt) {
+		return null;
+	}
+
+	const copyTitle = `${document.title.trim() || 'Untitled'} (Copy)`;
+	const duplicate = normalizeDocumentRecord({
+		...document,
+		id: globalThis.crypto.randomUUID(),
+		title: copyTitle,
+		createdAt: new Date().toISOString(),
+		updatedAt: new Date().toISOString(),
+		deletedAt: undefined,
+		content: structuredClone(document.content),
+		workspace: structuredClone(document.workspace),
+		layout: structuredClone(document.layout),
+	});
+
+	await database.put('documents', duplicate, duplicate.id);
+	return duplicate;
+}
+
+export async function duplicateProject(id: string): Promise<ScreenplayProjectRecord | null> {
+	const database = await getDatabase();
+	const project = await database.get('projects', id);
+
+	if (!project || project.deletedAt) {
+		return null;
+	}
+
+	const copyTitle = `${project.title.trim() || 'Untitled Project'} (Copy)`;
+	const duplicate = normalizeProjectRecord({
+		...project,
+		id: globalThis.crypto.randomUUID(),
+		title: copyTitle,
+		updatedAt: new Date().toISOString(),
+		deletedAt: undefined,
+	});
+
+	await database.put('projects', duplicate, duplicate.id);
+	return duplicate;
 }
 
 export async function moveDocumentToProject(documentId: string, projectId: string | null): Promise<ScreenplayDocumentRecord | null> {
@@ -429,7 +561,7 @@ export async function renameDocument(id: string, title: string): Promise<Screenp
 	return updatedDocument;
 }
 
-export function createTemplateScreenplayContent(template: 'feature' | 'short' | 'tv'): JSONContent {
+export function createTemplateScreenplayContent(template: ScriptTemplate): JSONContent {
 	switch (template) {
 		case 'feature':
 			return parseScreenplayTextToContent([
@@ -452,7 +584,29 @@ export function createTemplateScreenplayContent(template: 'feature' | 'short' | 
 				'JUNE',
 				'Today decides everything.',
 			].join('\n'));
-		case 'tv':
+		case 'tv_pilot':
+			return parseScreenplayTextToContent([
+				'COLD OPEN',
+				'',
+				'EXT. SUBURBAN BLOCK - DAWN',
+				'',
+				'Sprinklers hiss. A garage door creaks open before sunrise.',
+				'',
+				'CUT TO:',
+				'',
+				'INT. GARAGE - CONTINUOUS',
+				'',
+				'A wall of evidence photos stares back.',
+				'',
+				'END OF COLD OPEN',
+				'',
+				'TEASER',
+				'',
+				'INT. POLICE STATION - DAY',
+				'',
+				'The series regulars collide over a case that will define the season.',
+			].join('\n'));
+		case 'tv_episode':
 			return parseScreenplayTextToContent([
 				'TEASER',
 				'',
@@ -465,6 +619,38 @@ export function createTemplateScreenplayContent(template: 'feature' | 'short' | 
 				'INT. GARAGE - CONTINUOUS',
 				'',
 				'A wall of evidence photos stares back.',
+			].join('\n'));
+		case 'stage_play':
+			return parseScreenplayTextToContent([
+				'FADE IN:',
+				'',
+				'INT. LIVING ROOM - EVENING',
+				'',
+				'A modest apartment. MARIA enters and sets down her keys.',
+				'',
+				'MARIA',
+				'We need to talk about what happened.',
+				'',
+				'ALEX',
+				'Not tonight.',
+				'',
+				'END OF ACT ONE',
+			].join('\n'));
+		case 'documentary':
+			return parseScreenplayTextToContent([
+				'FADE IN:',
+				'',
+				'TITLE CARD: "WORKING TITLE"',
+				'',
+				'NARRATOR (V.O.)',
+				'This is where your story begins.',
+				'',
+				'EXT. LOCATION - DAY',
+				'',
+				'B-roll: the subject walks into frame.',
+				'',
+				'SUBJECT',
+				'I never thought I would be telling this story.',
 			].join('\n'));
 	}
 }
@@ -546,6 +732,21 @@ export async function purgeExpiredTrash(): Promise<number> {
 
 		if (deletedAtMs <= cutoff) {
 			await permanentlyDeleteDocument(document.id);
+			purgedCount += 1;
+		}
+	}
+
+	const projects = await database.getAll('projects');
+
+	for (const project of projects) {
+		if (!project.deletedAt) {
+			continue;
+		}
+
+		const deletedAtMs = new Date(project.deletedAt).getTime();
+
+		if (deletedAtMs <= cutoff) {
+			await permanentlyDeleteProject(project.id);
 			purgedCount += 1;
 		}
 	}

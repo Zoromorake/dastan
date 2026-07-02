@@ -131,6 +131,8 @@ export interface ScreenplayDocumentLayout {
 	elementSettings: Record<ScreenplayBlockType, ScreenplayElementSettings>;
 }
 
+export type ScriptTemplate = 'feature' | 'short' | 'tv_pilot' | 'tv_episode' | 'stage_play' | 'documentary';
+
 export type StructureTemplate = 'three-act' | 'save-the-cat' | 'blank';
 
 export interface StoryBasics {
@@ -147,6 +149,8 @@ export interface StructureBeat {
 	pageHint: string;
 	summary: string;
 	order: number;
+	/** Block index of the linked scene heading in the screenplay, when mapped. */
+	linkedSceneIndex?: number;
 }
 
 export interface StoryDevelopment {
@@ -237,17 +241,20 @@ export interface ScreenplayVersionSnapshot {
 export interface ScreenplayProjectRecord {
 	id: string;
 	title: string;
+	parentProjectId?: string | null;
 	genre?: string;
 	logline?: string;
 	synopsis?: string;
 	coverImageDataUrl?: string | null;
 	updatedAt: string;
+	deletedAt?: string;
 }
 
 export function normalizeProjectRecord(project: ScreenplayProjectRecord): ScreenplayProjectRecord {
 	return {
 		...project,
 		title: project.title?.trim() || 'Untitled Project',
+		parentProjectId: project.parentProjectId ?? null,
 		genre: project.genre ?? '',
 		logline: project.logline ?? '',
 		synopsis: project.synopsis ?? '',

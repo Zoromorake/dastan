@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/react';
 import { isScreenplayBlockType, SCREENPLAY_BLOCK_TYPES, type ScreenplayBlockType } from '@dastan/screenplay-model';
+import { normalizeCharacterCue } from './normalize';
 
 export const screenplayBlockTypes: ScreenplayBlockType[] = SCREENPLAY_BLOCK_TYPES;
 
@@ -8,6 +9,20 @@ export function setBlockType(editor: Editor, blockType: ScreenplayBlockType): bo
 }
 
 export function splitToBlockType(editor: Editor, blockType: ScreenplayBlockType): boolean {
+	const currentBlockType = getEditorBlockType(editor);
+
+	if (currentBlockType === 'character') {
+		const cue = getCurrentBlockText(editor).trim();
+
+		if (cue.length > 0) {
+			const normalized = normalizeCharacterCue(cue);
+
+			if (normalized !== cue) {
+				replaceCurrentBlockText(editor, normalized);
+			}
+		}
+	}
+
 	return editor.chain().focus().splitBlock().setNode(blockType).run();
 }
 

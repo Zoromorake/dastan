@@ -19,7 +19,8 @@ import { ShareDialog } from './ShareDialog';
 import { ShortcutsModal } from './ShortcutsModal';
 import { UserSettingsPanel } from './UserSettingsPanel';
 import type { SettingsTab, UserThemeSetting } from './UserSettingsPanel';
-
+import type { CollaboratorPresence } from '@dastan/plugin-api';
+import { CollaboratorAvatars } from './CollaboratorAvatars';
 interface TopBarProps {
 	theme: UserThemeSetting;
 	resolvedTheme: 'light' | 'dark';
@@ -39,9 +40,12 @@ interface TopBarProps {
 	onWorkspaceModeChange: (mode: WorkspaceMode) => void;
 	settingsTabRequest?: SettingsTab | null;
 	onSettingsTabRequestHandled?: () => void;
-	wordCount?: number;
-	wordsWrittenToday?: number;
 	onOpenFindReplace?: () => void;
+	typewriterMode?: boolean;
+	onToggleTypewriterMode?: () => void;
+	scriptStatsLabel?: string;
+	collaborators?: CollaboratorPresence[];
+	collaborationActive?: boolean;
 }
 
 export function TopBar({
@@ -63,9 +67,12 @@ export function TopBar({
 	onWorkspaceModeChange,
 	settingsTabRequest,
 	onSettingsTabRequestHandled,
-	wordCount,
-	wordsWrittenToday,
 	onOpenFindReplace,
+	typewriterMode = false,
+	onToggleTypewriterMode,
+	scriptStatsLabel,
+	collaborators = [],
+	collaborationActive = false,
 }: TopBarProps) {
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [shareOpen, setShareOpen] = useState(false);
@@ -109,6 +116,25 @@ export function TopBar({
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
+			if ((event.metaKey || event.ctrlKey) && event.key === ',') {
+				const target = event.target;
+
+				if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+					return;
+				}
+
+				event.preventDefault();
+				setSettingsInitialTab(undefined);
+				setSettingsOpen(true);
+				return;
+			}
+
+			if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 't') {
+				event.preventDefault();
+				onToggleTypewriterMode?.();
+				return;
+			}
+
 			if (event.key === '?' && !event.metaKey && !event.ctrlKey) {
 				const target = event.target;
 
@@ -125,7 +151,7 @@ export function TopBar({
 		return () => {
 			window.removeEventListener('keydown', handleKeyDown);
 		};
-	}, []);
+	}, [onToggleTypewriterMode]);
 
 	const saveIndicatorLabel =
 		saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving…' : 'Unsaved';
@@ -164,6 +190,12 @@ export function TopBar({
 						<DropdownMenuItem onClick={onToggleFocusMode}>
 							{focusMode ? 'Exit focus mode' : 'Focus mode'}
 						</DropdownMenuItem>
+						{onToggleTypewriterMode ? (
+							<DropdownMenuItem onClick={onToggleTypewriterMode}>
+								Typewriter mode
+								{typewriterMode ? <Check className="ml-auto size-4" /> : null}
+							</DropdownMenuItem>
+						) : null}
 						<DropdownMenuItem onClick={onOpenVersionHistory}>Version history</DropdownMenuItem>
 						{onOpenFindReplace ? (
 							<DropdownMenuItem onClick={onOpenFindReplace}>Find and replace</DropdownMenuItem>
@@ -211,17 +243,19 @@ export function TopBar({
 				) : null}
 
 				<div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-					{wordCount !== undefined ? (
-						<div
-							aria-label={`${wordCount.toLocaleString()} words in script${wordsWrittenToday ? `, ${wordsWrittenToday} written today` : ''}`}
-							className="hidden items-center gap-1 text-xs tabular-nums text-muted-foreground md:flex"
-							title="Script word count"
+					{collaborationActive ? (
+						<CollaboratorAvatars peers={collaborators} className="mr-1 hidden sm:flex" />
+					) : null}
+					{typewriterMode ? (
+						<span
+							className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-muted-foreground"
+							title="Typewriter mode"
 						>
-							<span>{wordCount.toLocaleString()} words</span>
-							{wordsWrittenToday !== undefined && wordsWrittenToday > 0 ? (
-								<span className="text-muted-foreground/70">· +{wordsWrittenToday} today</span>
-							) : null}
-						</div>
+							TW
+						</span>
+					) : null}
+					{scriptStatsLabel ? (
+						<span className="hidden text-xs tabular-nums text-muted-foreground md:inline">{scriptStatsLabel}</span>
 					) : null}
 					<div
 						aria-label={saveIndicatorLabel}
@@ -292,6 +326,7 @@ export function TopBar({
 				open={shareOpen}
 				title={title.trim() || 'Untitled Script'}
 				documentId={documentId}
+				isDark={resolvedTheme === 'dark'}
 				onClose={() => setShareOpen(false)}
 				onOpenAddressBook={() => {
 					setShareOpen(false);

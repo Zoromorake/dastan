@@ -5,9 +5,13 @@ import { getScreenplayBlocksFromContent } from './screenplay-text';
 export interface PageBreakSegment {
 	blockIndex: number;
 	pageNumber: number;
+	/** Extra top margin so paged view aligns with decorative page sheets. */
+	marginTopPx: number;
 }
 
 const LINES_PER_PAGE = 55;
+const LINE_HEIGHT_PX = 16;
+const PAGE_GAP_PX = 32;
 
 const charsPerLineByType: Record<ScreenplayBlockType, number> = {
 	scene_heading: 62,
@@ -53,7 +57,11 @@ export function computePageBreaks(content: JSONContent | null): PageBreakSegment
 		const spacingAfter = spacingAfterByType[block.type];
 
 		if (currentLine > 0 && currentLine + blockLines > LINES_PER_PAGE) {
-			breaks.push({ blockIndex: index, pageNumber: pageNumber + 1 });
+			const marginTopPx = Math.max(
+				PAGE_GAP_PX,
+				(LINES_PER_PAGE - currentLine) * LINE_HEIGHT_PX + PAGE_GAP_PX,
+			);
+			breaks.push({ blockIndex: index, pageNumber: pageNumber + 1, marginTopPx });
 			pageNumber += 1;
 			currentLine = 0;
 		}
@@ -61,7 +69,8 @@ export function computePageBreaks(content: JSONContent | null): PageBreakSegment
 		currentLine += blockLines + spacingAfter;
 
 		while (currentLine > LINES_PER_PAGE) {
-			breaks.push({ blockIndex: index, pageNumber: pageNumber + 1 });
+			const marginTopPx = PAGE_GAP_PX + LINE_HEIGHT_PX;
+			breaks.push({ blockIndex: index, pageNumber: pageNumber + 1, marginTopPx });
 			pageNumber += 1;
 			currentLine -= LINES_PER_PAGE;
 		}

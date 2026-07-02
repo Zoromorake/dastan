@@ -1,5 +1,6 @@
 import type { AiProviderRegistry } from './ai';
 import type { AuthService } from './auth';
+import type { CollaborationService } from './collaboration';
 import type { Entitlements } from './entitlements';
 import type { PluginRegistry } from './plugins';
 import type { QuotaService } from './quota';
@@ -15,11 +16,13 @@ export interface DastanServices {
 	sync: SyncService;
 	auth: AuthService;
 	quota: QuotaService;
+	collaboration: CollaborationService;
 	plugins: PluginRegistry;
 }
 
 export * from './ai';
 export * from './auth';
+export * from './collaboration';
 export * from './contributions';
 export * from './entitlements';
 export * from './plugins';

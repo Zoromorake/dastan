@@ -10,7 +10,7 @@ import {
 	type ScreenplayWorkspaceData,
 	type SmartTypeExclusions,
 } from '../types';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, PanelRight } from 'lucide-react';
 import { ElementPicker } from './ElementPicker';
 import {
 	CollapsibleSection,
@@ -168,13 +168,13 @@ export function WriterInspector({
 			<aside className={collapsedAsideClass}>
 				<div className="flex h-full items-start justify-center px-1 py-3">
 					<button
-						className={`h-9 w-9 rounded-md border text-xs ${isDark ? 'border-slate-600 text-slate-300 hover:border-slate-400 hover:text-white' : 'border-stone-300 text-stone-600 hover:border-stone-500 hover:text-stone-900'}`}
+						className={`inline-flex h-9 w-9 items-center justify-center rounded-md border ${isDark ? 'border-slate-600 text-slate-300 hover:border-slate-400 hover:text-white' : 'border-stone-300 text-stone-600 hover:border-stone-500 hover:text-stone-900'}`}
 						type="button"
 						onClick={onToggleCollapsed}
 						title="Open inspector"
 						aria-label="Open inspector"
 					>
-						i
+						<PanelRight size={16} strokeWidth={2} />
 					</button>
 				</div>
 			</aside>

@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import type { ScreenplayDocumentRecord } from '../../types';
+import type { ScreenplayDocumentRecord, ScreenplayProjectRecord } from '../../types';
 import { formatRelativeDate } from '../../utils/hub-utils';
 import { getHubTheme } from '../../utils/hub-theme';
 import type { ShareContact } from '../../utils/share-contacts';
@@ -109,32 +109,48 @@ export function HubSharedPanel({
 
 interface HubTrashPanelProps {
   documents: ScreenplayDocumentRecord[];
+  projects: ScreenplayProjectRecord[];
   isDark: boolean;
-  onRestore: (id: string) => void;
-  onDeleteForever: (id: string) => void;
+  onRestoreDocument: (id: string) => void;
+  onDeleteDocumentForever: (id: string) => void;
+  onRestoreProject: (id: string) => void;
+  onDeleteProjectForever: (id: string) => void;
 }
 
-export function HubTrashPanel({ documents, isDark, onRestore, onDeleteForever }: HubTrashPanelProps) {
+export function HubTrashPanel({
+  documents,
+  projects,
+  isDark,
+  onRestoreDocument,
+  onDeleteDocumentForever,
+  onRestoreProject,
+  onDeleteProjectForever,
+}: HubTrashPanelProps) {
   const hub = getHubTheme(isDark);
+  const isEmpty = documents.length === 0 && projects.length === 0;
 
   return (
     <section>
       <h2 className={`mb-1 text-lg font-semibold ${hub.panelTitle}`}>Trash</h2>
-      <p className={`mb-6 text-sm ${hub.panelMuted}`}>Deleted scripts stay here for 30 days, then are removed automatically.</p>
+      <p className={`mb-6 text-sm ${hub.panelMuted}`}>
+        Deleted scripts and projects stay here for 30 days, then are removed automatically.
+      </p>
 
-      {documents.length === 0 ? (
+      {isEmpty ? (
         <div className={`rounded-xl border border-dashed p-12 text-center ${hub.dashed}`}>
           <p className={`mb-2 text-base font-semibold ${hub.panelTitle}`}>Trash is empty</p>
-          <p className={`text-sm ${hub.panelMuted}`}>Scripts you delete from the library appear here until restored or permanently removed.</p>
+          <p className={`text-sm ${hub.panelMuted}`}>
+            Items you delete from the library appear here until restored or permanently removed.
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
-          {documents.map((document) => (
-            <article key={document.id} className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 ${hub.card}`}>
+          {projects.map((project) => (
+            <article key={project.id} className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 ${hub.card}`}>
               <div className="min-w-0">
-                <h3 className={`truncate text-sm font-semibold ${hub.panelTitle}`}>{document.title || 'Untitled'}</h3>
+                <h3 className={`truncate text-sm font-semibold ${hub.panelTitle}`}>{project.title || 'Untitled project'}</h3>
                 <p className={`mt-1 text-xs ${hub.panelMuted}`}>
-                  Deleted {document.deletedAt ? formatRelativeDate(document.deletedAt) : 'recently'}
+                  Project · deleted {project.deletedAt ? formatRelativeDate(project.deletedAt) : 'recently'}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -143,12 +159,37 @@ export function HubTrashPanel({ documents, isDark, onRestore, onDeleteForever }:
                   type="button"
                   variant="outline"
                   onClick={() => {
-                    void onRestore(document.id);
+                    void onRestoreProject(project.id);
                   }}
                 >
                   Restore
                 </Button>
-                <Button size="sm" type="button" variant="destructive" onClick={() => onDeleteForever(document.id)}>
+                <Button size="sm" type="button" variant="destructive" onClick={() => onDeleteProjectForever(project.id)}>
+                  Delete forever
+                </Button>
+              </div>
+            </article>
+          ))}
+          {documents.map((document) => (
+            <article key={document.id} className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 ${hub.card}`}>
+              <div className="min-w-0">
+                <h3 className={`truncate text-sm font-semibold ${hub.panelTitle}`}>{document.title || 'Untitled'}</h3>
+                <p className={`mt-1 text-xs ${hub.panelMuted}`}>
+                  Script · deleted {document.deletedAt ? formatRelativeDate(document.deletedAt) : 'recently'}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    void onRestoreDocument(document.id);
+                  }}
+                >
+                  Restore
+                </Button>
+                <Button size="sm" type="button" variant="destructive" onClick={() => onDeleteDocumentForever(document.id)}>
                   Delete forever
                 </Button>
               </div>
@@ -157,39 +198,6 @@ export function HubTrashPanel({ documents, isDark, onRestore, onDeleteForever }:
         </div>
       )}
     </section>
-  );
-}
-
-interface HubLoadingSkeletonProps {
-  isDark: boolean;
-}
-
-export function HubLoadingSkeleton({ isDark }: HubLoadingSkeletonProps) {
-  const hub = getHubTheme(isDark);
-
-  return (
-    <div className={`flex h-screen ${hub.shell} ${isDark ? 'dark' : ''}`}>
-      <div className={`hidden w-[12.5rem] shrink-0 p-4 md:block ${hub.sidebar}`}>
-        <div className="mb-8 h-11 w-28 animate-pulse rounded-lg bg-black/10" />
-        <div className="space-y-4">
-          <div className="h-10 animate-pulse rounded-lg bg-black/10" />
-          <div className="h-10 animate-pulse rounded-lg bg-black/10" />
-          <div className="h-10 animate-pulse rounded-lg bg-black/10" />
-        </div>
-      </div>
-      <div className="flex-1 p-6">
-        <div className="mb-6 h-8 w-64 animate-pulse rounded-lg bg-muted" />
-        <div className="mb-8 flex gap-2">
-          <div className="h-9 w-28 animate-pulse rounded-lg bg-muted" />
-          <div className="h-9 w-28 animate-pulse rounded-lg bg-muted" />
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="h-28 animate-pulse rounded-xl bg-muted" />
-          <div className="h-28 animate-pulse rounded-xl bg-muted" />
-          <div className="h-28 animate-pulse rounded-xl bg-muted" />
-        </div>
-      </div>
-    </div>
   );
 }
 

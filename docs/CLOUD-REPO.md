@@ -45,6 +45,7 @@ When set, the web app calls `registerCloudAdapters(services, cloudUrl)` before r
 | `SyncService` | `sync/` | Cross-device sync, backups |
 | `AuthService` | `auth/` | Sign-in, sessions |
 | `ShareService` | `collaboration/` | Real invite links and permissions |
+| `CollaborationService` | `collaboration/` | Real-time co-editing, presence, shared AI chat broadcast |
 | `QuotaService` | `quota-system/` | Server-enforced free tier |
 | `Entitlements` | `billing/` | Pro / Enterprise feature gates |
 | `AiProviderAdapter` (`dastan-cloud`) | `ai-gateway/` | Managed AI without BYOK |
@@ -67,7 +68,7 @@ if (import.meta.env.VITE_DASTAN_CLOUD_URL) {
 Cloud registration must:
 
 1. Call `services.aiProviders.register(dastanCloudProvider)`
-2. Replace `services.sync`, `services.auth`, `services.share`, `services.quota`, and `services.entitlements`
+2. Replace `services.sync`, `services.auth`, `services.share`, `services.quota`, `services.entitlements`, and `services.collaboration`
 3. Never patch or fork `@dastan/editor`, `@dastan/screenplay-model`, or other core packages
 
 ### Dependency direction
@@ -97,7 +98,9 @@ Install public packages from npm or git tags:
 1. **ai-gateway + quota-system** — free daily prompts via `dastan-cloud` provider (keep BYOK working)
 2. **auth + sync** — Pro tier cloud backup
 3. **memory** — cloud AI memory (Pro)
-4. **collaboration + enterprise** — writer rooms, SSO
+4. **collaboration + enterprise** — writer rooms, presence, shared AI threads, SSO
+
+See [REALTIME-COLLABORATION.md](./REALTIME-COLLABORATION.md) and [COLLABORATION-CLOUD-SPEC.md](./COLLABORATION-CLOUD-SPEC.md).
 
 ## What stays in the public repo
 

@@ -17,6 +17,7 @@ export interface DocumentRepository {
 	restore(id: string): Promise<ScreenplayDocumentRecord | null>;
 	permanentlyDelete(id: string): Promise<void>;
 	moveToProject(documentId: string, projectId: string | null): Promise<ScreenplayDocumentRecord | null>;
+	duplicate(id: string): Promise<ScreenplayDocumentRecord | null>;
 	loadLast(): Promise<ScreenplayDocumentRecord>;
 	setLastDocumentId(id: string): Promise<void>;
 	createEmptyContent(): JSONContent;
@@ -33,6 +34,10 @@ export interface ProjectRepository {
 		patch: Partial<Pick<ScreenplayProjectRecord, 'title' | 'genre' | 'logline' | 'synopsis' | 'coverImageDataUrl'>>,
 	): Promise<ScreenplayProjectRecord | null>;
 	delete(id: string): Promise<void>;
+	duplicate(id: string): Promise<ScreenplayProjectRecord | null>;
+	listTrashed(): Promise<ScreenplayProjectRecord[]>;
+	restore(id: string): Promise<ScreenplayProjectRecord | null>;
+	permanentlyDelete(id: string): Promise<void>;
 }
 
 export interface VersionRepository {

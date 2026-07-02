@@ -8,6 +8,7 @@ import {
 import { registerCloudAdapters } from './registerCloudAdapters';
 import { builtInAiProviders } from '../services/built-in-ai-providers';
 import { localAuthService } from '../services/local-auth';
+import { localCollaborationService } from '../services/local-collaboration';
 import { localQuotaService } from '../services/local-quota';
 import { localShareService } from '../services/local-share';
 import { localStorageBackend } from '../services/local-storage-backend';
@@ -35,6 +36,7 @@ export function createDastanApp(options: CreateDastanAppOptions = {}): DastanSer
 		sync: localSyncService,
 		auth: localAuthService,
 		quota: localQuotaService,
+		collaboration: localCollaborationService,
 		plugins,
 	};
 }

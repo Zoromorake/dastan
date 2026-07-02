@@ -2,6 +2,7 @@ import { mergeAttributes, Node } from '@tiptap/core';
 import type { Editor } from '@tiptap/react';
 import type { ScreenplayBlockType } from '@dastan/screenplay-model';
 import { setBlockType, splitToBlockType } from '../commands';
+import { normalizeCharacterCue } from '../normalize';
 
 interface ScreenplayBlockOptions {
   name: ScreenplayBlockType;
@@ -77,21 +78,6 @@ function canonicalizeSceneHeadingPrefix(rawText: string): string | null {
   }
 
   return null;
-}
-
-function normalizeCharacterCue(rawText: string): string {
-  let next = rawText.trim().replace(/\s+/gu, ' ').toUpperCase();
-
-  next = next
-    .replace(/\(\s*V\.?\s*O\.?\s*\)/giu, '(V.O.)')
-    .replace(/\(\s*O\.?\s*S\.?\s*\)/giu, '(O.S.)')
-    .replace(/\(\s*CONT['’]?D\s*\)/giu, "(CONT'D)")
-    .replace(/\s*\(\s*/gu, ' (')
-    .replace(/\s*\)\s*/gu, ')')
-    .replace(/\s+/gu, ' ')
-    .trim();
-
-  return next;
 }
 
 export function createScreenplayBlockExtension(options: ScreenplayBlockOptions) {

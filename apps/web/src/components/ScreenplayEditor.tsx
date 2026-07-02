@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, MessageSquare } from 'lucide-react';
 
-import type { Editor } from '@tiptap/core';
+import type { Editor, Extensions } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import Bold from '@tiptap/extension-bold';
 import History from '@tiptap/extension-history';
@@ -25,9 +25,12 @@ import {
 	TextColor,
 	Transition,
 } from '../editor/extensions';
-import { getCurrentBlockIndex, getEditorBlockType, setBlockType } from '../editor/commands';
+import { getCurrentBlockIndex, getEditorBlockType, replaceCurrentBlockText, setBlockType } from '../editor/commands';
+import { EditorCommandProvider, type EditorCommands } from '../context/EditorCommandContext';
+import { looksLikeScreenplayText, parseScreenplayInsertText } from '../utils/insert-screenplay-text';
 import { alignDualDialogueColumns } from '../editor/dual-dialogue';
 import { useScreenplayPersistence } from '../hooks/useScreenplayPersistence';
+import { useDocumentCollaboration } from '../hooks/useDocumentCollaboration';
 import { useScreenplayStore } from '../store';
 import type {
 	ScreenplayBlockType,
@@ -38,12 +41,12 @@ import type {
 } from '../types';
 import { normalizeScriptNote, normalizeWorkspaceData } from '../types';
 import { computePageBreaks, groupBlocksByPage } from '../utils/page-breaks';
+import { formatPageAndRuntime } from '../utils/runtime-estimate';
 import { exportDocumentToPdf } from '../utils/pdf-export';
-import { countWordsFromContent } from '../utils/screenplay-text';
-import { loadWritingStats } from '../utils/writing-stats';
+import { recordWordCountDelta, startWritingSession } from '../utils/writing-stats';
 import { getSceneIndexForBlockIndex, moveSceneInContent, splitContentIntoSceneGroups } from '../utils/scene-reorder';
 import { normalizeDocumentLayout } from '../utils/screenplay-layout';
-import { restoreVersionSnapshot } from '../utils/screenplay-storage';
+import { loadTypewriterMode, setTypewriterMode } from '../utils/user-settings';
 import { ScriptPageChrome } from './ScriptPageChrome';
 import {
 	getPageMarginStyle,
@@ -61,6 +64,7 @@ import {
 	getActiveDocuments,
 	getProjectById,
 	loadDocumentById,
+	restoreVersionSnapshot,
 	saveDocument,
 	setLastDocumentId,
 	softDeleteDocument,
@@ -97,8 +101,9 @@ import type { SettingsTab, UserThemeSetting } from './UserSettingsPanel';
 import { VersionHistoryDialog } from './VersionHistoryDialog';
 import { WriterInspector } from './WriterInspector';
 import { AiChatPanel } from './ai/AiChatPanel';
+import { ErrorBoundary } from './ErrorBoundary';
 
-const screenplayExtensions = [
+const screenplayExtensions: Extensions = [
 	ScreenplayDocument,
 	Text,
 	History,
@@ -148,9 +153,12 @@ interface ScreenplayEditorProps {
 
 export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme, onThemeChange }: ScreenplayEditorProps) {
 	const persistence = useScreenplayPersistence(documentId);
+	const documentCollaboration = useDocumentCollaboration(documentId, screenplayExtensions);
 	const editorRef = useRef<Editor | null>(null);
 	const sceneResetTimerRef = useRef<number | null>(null);
-	const pageScrollRef = useRef<HTMLDivElement>(null);
+	const scrollContainerRef = useRef<HTMLDivElement>(null);
+	const hasRestoredScrollRef = useRef(false);
+	const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const highlightedSceneElementRef = useRef<HTMLElement | null>(null);
 	const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('script');
 	const [developSubTab, setDevelopSubTab] = useState<DevelopSubTab>('basics');
@@ -162,12 +170,13 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	const [inspectorCollapsed, setInspectorCollapsed] = useState(true);
 	const [pageFitScale, setPageFitScale] = useState(1);
 	const [chatOpen, setChatOpen] = useState(false);
+	const [pendingAiPrompt, setPendingAiPrompt] = useState<string | null>(null);
+	const [chatSelectionText, setChatSelectionText] = useState<string | undefined>(undefined);
 	const [settingsTabRequest, setSettingsTabRequest] = useState<SettingsTab | null>(null);
 	const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 	const [scriptNoteOpen, setScriptNoteOpen] = useState(false);
 	const [findReplaceOpen, setFindReplaceOpen] = useState(false);
-	const [wordCount, setWordCount] = useState(0);
-	const [wordsWrittenToday, setWordsWrittenToday] = useState(() => loadWritingStats().todayWords);
+	const [typewriterMode, setTypewriterModeState] = useState(() => loadTypewriterMode());
 	const [smartTypeQuery, setSmartTypeQuery] = useState('');
 	const [smartTypeAnchorTop, setSmartTypeAnchorTop] = useState(0);
 	const [smartTypeAnchorLeft, setSmartTypeAnchorLeft] = useState(0);
@@ -293,7 +302,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	}, [currentDocument?.id, currentDocument?.projectId, documentWorkspace.development, persistence, setDocumentWorkspace]);
 
 	useEffect(() => {
-		const container = pageScrollRef.current;
+		const container = scrollContainerRef.current;
 
 		if (!container) {
 			return;
@@ -380,42 +389,55 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		[persistence],
 	);
 
-	const editor = useEditor({
-		extensions: screenplayExtensions,
-		content: createEmptyScreenplayContent(),
-		autofocus: false,
-		editorProps: {
-			attributes: {
-				class: 'focus:outline-none space-y-3 text-stone-900 font-mono',
-				style: 'color: #1c1917; font-family: Courier Prime, Courier New, Courier, monospace;',
-				spellcheck: 'true',
-			},
-			handleKeyDown: handleEditorKeyDown,
-		},
-		onCreate: ({ editor: createdEditor }) => {
-			editorRef.current = createdEditor;
-		},
-		onUpdate: ({ editor: updatedEditor }) => {
-			persistence.handleUpdate();
-			updateEditorOverlayState(updatedEditor);
-			syncScriptNoteMarkers(updatedEditor);
-			setWordCount(countWordsFromContent(updatedEditor.getJSON()));
-			requestAnimationFrame(() => {
-				alignDualDialogueColumns(updatedEditor.view.dom);
-			});
-		},
-		onSelectionUpdate: ({ editor: selectionEditor }) => {
-			setCurrentBlockType(getEditorBlockType(selectionEditor));
-			updateEditorOverlayState(selectionEditor);
-		},
-		onFocus: () => {
-			setEditorHasFocus(true);
-		},
-		onBlur: () => {
-			setEditorHasFocus(false);
-			setEmptyElementMenuOpen(false);
-		},
-	});
+	const editor = useEditor(
+		documentCollaboration.isReady
+			? {
+					extensions: documentCollaboration.extensions,
+					content: createEmptyScreenplayContent(),
+					autofocus: false,
+					editorProps: {
+						attributes: {
+							class: 'focus:outline-none space-y-3 text-stone-900 font-mono',
+							style: 'color: #1c1917; font-family: Courier Prime, Courier New, Courier, monospace;',
+							spellcheck: 'true',
+						},
+						handleKeyDown: handleEditorKeyDown,
+					},
+					onCreate: ({ editor: createdEditor }) => {
+						editorRef.current = createdEditor;
+					},
+					onUpdate: ({ editor: updatedEditor }) => {
+						persistence.handleUpdate();
+						updateEditorOverlayState(updatedEditor);
+						syncScriptNoteMarkers(updatedEditor);
+						requestAnimationFrame(() => {
+							alignDualDialogueColumns(updatedEditor.view.dom);
+						});
+					},
+					onSelectionUpdate: ({ editor: selectionEditor }) => {
+						setCurrentBlockType(getEditorBlockType(selectionEditor));
+						updateEditorOverlayState(selectionEditor);
+						const { from, to } = selectionEditor.state.selection;
+
+						if (from === to) {
+							setChatSelectionText(undefined);
+							return;
+						}
+
+						const selectedText = selectionEditor.state.doc.textBetween(from, to, '\n').trim();
+						setChatSelectionText(selectedText.length > 3 ? selectedText : undefined);
+					},
+					onFocus: () => {
+						setEditorHasFocus(true);
+					},
+					onBlur: () => {
+						setEditorHasFocus(false);
+						setEmptyElementMenuOpen(false);
+					},
+				}
+			: undefined,
+		[documentCollaboration.extensions, documentCollaboration.isReady, handleEditorKeyDown, persistence, syncScriptNoteMarkers, updateEditorOverlayState],
+	);
 
 	useEffect(() => {
 		persistence.registerEditor(editor);
@@ -423,6 +445,79 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			persistence.registerEditor(null);
 		};
 	}, [editor, persistence]);
+
+	const editorCommands = useMemo<EditorCommands | null>(() => {
+		if (!editor) {
+			return null;
+		}
+
+		const insertScreenplayBlocks = (text: string) => {
+			const parsed = parseScreenplayInsertText(text);
+			const blocks = parsed.content ?? [];
+
+			if (blocks.length === 0) {
+				return;
+			}
+
+			editor.chain().focus().insertContent(blocks).run();
+		};
+
+		const insertAtCursor = (text: string) => {
+			const content = text.trim();
+			if (!content) {
+				return;
+			}
+
+			if (looksLikeScreenplayText(content)) {
+				insertScreenplayBlocks(content);
+				return;
+			}
+
+			const isEmpty = editor.state.selection.$from.parent.textContent.trim().length === 0;
+
+			if (isEmpty) {
+				if (getEditorBlockType(editor) !== 'action') {
+					setBlockType(editor, 'action');
+				}
+
+				replaceCurrentBlockText(editor, content);
+				return;
+			}
+
+			editor.chain().focus().insertContent(content).run();
+		};
+
+		return {
+			insertAtCursor,
+			insertScreenplayText: insertScreenplayBlocks,
+			replaceSelection: (text: string) => {
+				const { from, to } = editor.state.selection;
+				const content = text.trim();
+
+				if (!content) {
+					return;
+				}
+
+				if (from !== to) {
+					if (looksLikeScreenplayText(content)) {
+						editor.chain().focus().deleteSelection().run();
+						insertScreenplayBlocks(content);
+						return;
+					}
+
+					editor.chain().focus().deleteSelection().insertContent(content).run();
+					return;
+				}
+
+				insertAtCursor(content);
+			},
+			getSelectionText: () => {
+				const { from, to } = editor.state.selection;
+				return editor.state.doc.textBetween(from, to, '\n');
+			},
+			getCursorBlockType: () => editor.state.selection.$from.parent.type.name,
+		};
+	}, [editor]);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -501,22 +596,6 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	}, [setDocumentList]);
 
 	useEffect(() => {
-		if (!currentDocument?.content) {
-			return;
-		}
-
-		setWordCount(countWordsFromContent(currentDocument.content));
-	}, [currentDocument?.content, currentDocument?.id]);
-
-	useEffect(() => {
-		if (saveStatus !== 'saved') {
-			return;
-		}
-
-		setWordsWrittenToday(loadWritingStats().todayWords);
-	}, [saveStatus]);
-
-	useEffect(() => {
 		if (!isHydrated) {
 			return;
 		}
@@ -566,14 +645,23 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		}
 
 		const editorDom = editor.view.dom;
-		const breaks = new Set(computePageBreaks(currentDocument?.content ?? null).map((segment) => segment.blockIndex));
+		const breakMap = new Map(
+			computePageBreaks(currentDocument?.content ?? null).map((segment) => [
+				segment.blockIndex,
+				segment.marginTopPx,
+			]),
+		);
 		const blockNodes = editorDom.querySelectorAll<HTMLElement>('[data-block-type]');
 
 		blockNodes.forEach((node, index) => {
-			if (breaks.has(index)) {
+			const marginTopPx = breakMap.get(index);
+
+			if (marginTopPx !== undefined) {
 				node.classList.add('screenplay-page-break-before');
+				node.style.marginTop = `${marginTopPx}px`;
 			} else {
 				node.classList.remove('screenplay-page-break-before');
+				node.style.marginTop = '';
 			}
 		});
 	}, [currentDocument?.content, documentLayout.pageViewMode, editor]);
@@ -585,6 +673,14 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 
 		return Math.max(1, groupBlocksByPage(currentDocument.content).length);
 	}, [currentDocument]);
+
+	const scriptStatsLabel = useMemo(() => {
+		if (currentDocument === null) {
+			return undefined;
+		}
+
+		return formatPageAndRuntime(pagedPageCount);
+	}, [currentDocument, pagedPageCount]);
 
 	const smartTypeSource = useMemo(
 		() => ({
@@ -688,6 +784,95 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		currentDocument !== null &&
 		currentDocument.id === documentId;
 
+	const scrollStorageKey = `dastan.scroll.${documentId}`;
+
+	useEffect(() => {
+		hasRestoredScrollRef.current = false;
+
+		return () => {
+			hasRestoredScrollRef.current = false;
+
+			if (scrollSaveTimerRef.current !== null) {
+				window.clearTimeout(scrollSaveTimerRef.current);
+				scrollSaveTimerRef.current = null;
+			}
+		};
+	}, [documentId]);
+
+	useEffect(() => {
+		if (!isEditorReady) {
+			return;
+		}
+
+		const container = scrollContainerRef.current;
+
+		if (!container) {
+			return;
+		}
+
+		const handleScroll = () => {
+			if (scrollSaveTimerRef.current !== null) {
+				window.clearTimeout(scrollSaveTimerRef.current);
+			}
+
+			scrollSaveTimerRef.current = window.setTimeout(() => {
+				window.localStorage.setItem(scrollStorageKey, String(container.scrollTop));
+			}, 300);
+		};
+
+		container.addEventListener('scroll', handleScroll, { passive: true });
+
+		return () => {
+			container.removeEventListener('scroll', handleScroll);
+
+			if (scrollSaveTimerRef.current !== null) {
+				window.clearTimeout(scrollSaveTimerRef.current);
+				scrollSaveTimerRef.current = null;
+			}
+		};
+	}, [isEditorReady, scrollStorageKey]);
+
+	useEffect(() => {
+		if (!isEditorReady || hasRestoredScrollRef.current) {
+			return;
+		}
+
+		const blockNodes = currentDocument?.content?.content;
+
+		if (!Array.isArray(blockNodes) || blockNodes.length <= 1) {
+			hasRestoredScrollRef.current = true;
+			return;
+		}
+
+		const savedScrollTop = window.localStorage.getItem(scrollStorageKey);
+
+		if (savedScrollTop === null) {
+			hasRestoredScrollRef.current = true;
+			return;
+		}
+
+		const scrollTop = Number(savedScrollTop);
+
+		if (!Number.isFinite(scrollTop)) {
+			hasRestoredScrollRef.current = true;
+			return;
+		}
+
+		const restoreTimer = window.setTimeout(() => {
+			const container = scrollContainerRef.current;
+
+			if (container) {
+				container.scrollTop = scrollTop;
+			}
+
+			hasRestoredScrollRef.current = true;
+		}, 50);
+
+		return () => {
+			window.clearTimeout(restoreTimer);
+		};
+	}, [currentDocument?.content, documentId, isEditorReady, scrollStorageKey]);
+
 	useEffect(() => {
 		if (!isEditorReady || workspaceMode !== 'script') {
 			return;
@@ -701,6 +886,70 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			window.clearTimeout(focusTimer);
 		};
 	}, [workspaceMode, currentDocument?.id, editor, isEditorReady]);
+
+	useEffect(() => {
+		const handleTypewriterModeChange = (event: Event) => {
+			const detail = (event as CustomEvent<boolean>).detail;
+
+			if (typeof detail === 'boolean') {
+				setTypewriterModeState(detail);
+				return;
+			}
+
+			setTypewriterModeState(loadTypewriterMode());
+		};
+
+		window.addEventListener('dastan:typewriter-mode-changed', handleTypewriterModeChange);
+
+		return () => {
+			window.removeEventListener('dastan:typewriter-mode-changed', handleTypewriterModeChange);
+		};
+	}, []);
+
+	const handleToggleTypewriterMode = useCallback(() => {
+		const next = !typewriterMode;
+		setTypewriterMode(next);
+		setTypewriterModeState(next);
+	}, [typewriterMode]);
+
+	useEffect(() => {
+		if (!typewriterMode || !editor || workspaceMode !== 'script') {
+			return;
+		}
+
+		const handleSelectionUpdate = () => {
+			if (!scrollContainerRef.current) {
+				return;
+			}
+
+			const { from } = editor.state.selection;
+			const domAtPos = editor.view.domAtPos(from);
+			let node = domAtPos.node instanceof Element ? domAtPos.node : domAtPos.node.parentElement;
+			node = node?.closest('[data-block-type]') ?? node;
+
+			if (!node) {
+				return;
+			}
+
+			const container = scrollContainerRef.current;
+			const containerRect = container.getBoundingClientRect();
+			const nodeRect = node.getBoundingClientRect();
+			const nodeRelativeTop = nodeRect.top - containerRect.top + container.scrollTop;
+			const targetScrollTop = nodeRelativeTop - container.clientHeight / 2 + nodeRect.height / 2;
+
+			if (Math.abs(container.scrollTop - targetScrollTop) < 1) {
+				return;
+			}
+
+			container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+		};
+
+		editor.on('selectionUpdate', handleSelectionUpdate);
+
+		return () => {
+			editor.off('selectionUpdate', handleSelectionUpdate);
+		};
+	}, [editor, typewriterMode, workspaceMode]);
 
 	const scrollToScene = useCallback((sceneIndex: number) => {
 		setWorkspaceMode('script');
@@ -1278,7 +1527,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		</div>
 	);
 
-	if (!persistence.isLoaded || !isHydrated || editor === null) {
+	if (!persistence.isLoaded || !isHydrated || !documentCollaboration.isReady || editor === null) {
 		const loadingTitle =
 			currentDocument?.id === documentId && currentDocument.title.trim().length > 0
 				? currentDocument.title.trim()
@@ -1318,6 +1567,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	}
 
 	return (
+		<EditorCommandProvider commands={editorCommands!}>
 		<div className={`flex h-screen flex-col overflow-hidden ${editorTheme.shell}`}>
 			<TopBar
 				theme={theme}
@@ -1342,9 +1592,12 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				onWorkspaceModeChange={setWorkspaceMode}
 				settingsTabRequest={settingsTabRequest}
 				onSettingsTabRequestHandled={() => setSettingsTabRequest(null)}
-				wordCount={wordCount}
-				wordsWrittenToday={wordsWrittenToday}
 				onOpenFindReplace={() => setFindReplaceOpen(true)}
+				typewriterMode={typewriterMode}
+				onToggleTypewriterMode={handleToggleTypewriterMode}
+				scriptStatsLabel={scriptStatsLabel}
+				collaborators={documentCollaboration.peers}
+				collaborationActive={documentCollaboration.collaborationActive}
 			/>
 
 			{!focusMode && workspaceMode === 'script' ? (
@@ -1373,7 +1626,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			) : null}
 
 			{!focusMode && workspaceMode !== 'script' ? (
-				<div className={`flex h-10 shrink-0 items-center justify-center border-b px-4 ${editorTheme.tabBar}`}>
+				<div className={`relative flex h-10 shrink-0 items-center justify-center border-b px-4 ${editorTheme.tabBar}`}>
 					<EditorWorkspaceSubNav
 						activeDevelopSubTab={developSubTab}
 						activeWorldSubTab={worldSubTab}
@@ -1382,6 +1635,19 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 						onDevelopSubTabChange={setDevelopSubTab}
 						onWorldSubTabChange={setWorldSubTab}
 					/>
+					<div className="absolute right-4 flex shrink-0 items-center">
+						<button
+							className={`shrink-0 ${chatOpen ? editorTheme.chatToggleActive : editorTheme.chatToggle}`}
+							type="button"
+							aria-label="Toggle AI chat"
+							aria-pressed={chatOpen}
+							title="AI Chat (⌘L)"
+							onClick={() => setChatOpen((currentValue) => !currentValue)}
+						>
+							<MessageSquare size={14} />
+							Chat
+						</button>
+					</div>
 				</div>
 			) : null}
 
@@ -1429,7 +1695,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				</div>
 			) : null}
 			<div className="relative z-0 flex min-h-0 flex-1 overflow-hidden">
-				{!focusMode ? (
+				{!focusMode && workspaceMode === 'script' ? (
 					<SceneNavigator
 						collapsed={sidebarCollapsed}
 						mode={sidebarMode}
@@ -1446,10 +1712,10 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 					/>
 				) : null}
 
-				<main className={`flex min-h-0 min-w-0 flex-1 overflow-hidden ${editorTheme.main}`}>
+				<main className={`relative flex min-h-0 min-w-0 flex-1 overflow-hidden ${editorTheme.main}`}>
 					<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 						<div
-							ref={pageScrollRef}
+							ref={scrollContainerRef}
 							className="flex min-h-0 flex-1 justify-center overflow-x-hidden overflow-y-auto px-4 py-6 md:px-8 md:py-8"
 						>
 							{workspaceMode === 'script' ? (
@@ -1477,6 +1743,10 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 										onTitleChange={handleTitleChange}
 										onWorkspaceChange={handleWorkspaceChange}
 										onSceneSelect={scrollToScene}
+										onRequestStructureReview={(prompt) => {
+											setChatOpen(true);
+											setPendingAiPrompt(prompt);
+										}}
 									/>
 								</div>
 							)}
@@ -1502,6 +1772,33 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 						/>
 					) : null}
 				</main>
+
+				{!focusMode ? (
+					<ErrorBoundary label="ai-chat" fallback={null}>
+						<AiChatPanel
+							open={chatOpen}
+							variant="editor"
+							selectionText={chatSelectionText}
+							pendingPrompt={pendingAiPrompt}
+							onPendingPromptHandled={() => setPendingAiPrompt(null)}
+							scriptContext={{
+								documentId: currentDocument.id,
+								projectId: currentDocument.projectId,
+								documentTitle: currentDocument.title,
+								documentContent: currentDocument.content,
+								workspace: documentWorkspace,
+							}}
+							resolvedTheme={resolvedTheme}
+							onClose={() => setChatOpen(false)}
+							onOpenSettings={() => {
+								setChatOpen(false);
+								setSettingsTabRequest('ai');
+							}}
+							collaborationRoomId={documentCollaboration.roomId}
+							activeCollaborators={documentCollaboration.peers}
+						/>
+					</ErrorBoundary>
+				) : null}
 			</div>
 
 			{!focusMode && workspaceMode === 'script' && editor ? (
@@ -1546,22 +1843,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				}}
 			/>
 
-			{!focusMode && workspaceMode === 'script' ? (
-				<AiChatPanel
-					open={chatOpen}
-					documentId={currentDocument.id}
-					projectId={currentDocument.projectId}
-					documentTitle={currentDocument.title}
-					documentContent={currentDocument.content}
-					workspace={documentWorkspace}
-					resolvedTheme={resolvedTheme}
-					onClose={() => setChatOpen(false)}
-					onOpenSettings={() => {
-						setChatOpen(false);
-						setSettingsTabRequest('ai');
-					}}
-				/>
-			) : null}
-		</div>
+	</div>
+	</EditorCommandProvider>
 	);
 }

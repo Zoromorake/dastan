@@ -103,6 +103,7 @@ export function endWritingSession(): WritingStatsState {
 	return next;
 }
 
+// Streak increments exactly once per calendar day on first write. Subsequent writes same day are no-ops for streak.
 export function recordWordCountDelta(previousContent: JSONContent | null, nextContent: JSONContent | null): WritingStatsState {
 	const stats = rolloverDay(loadWritingStats());
 	const previousWords = countWordsFromContent(previousContent);
@@ -115,16 +116,25 @@ export function recordWordCountDelta(previousContent: JSONContent | null, nextCo
 
 	const today = todayKey();
 	const nextTodayWords = stats.todayWords + delta;
-	const nextStreak = stats.lastActiveDate === today || stats.lastActiveDate === yesterdayKey()
-		? Math.max(stats.streakDays, stats.lastActiveDate === today ? stats.streakDays : stats.streakDays + 1)
-		: 1;
+
+	// After rolloverDay() has been called, stats.todayDate === today is always true.
+	// We need to know if this is a NEW day's first write (lastActiveDate < today).
+	const isFirstWriteToday = stats.lastActiveDate !== today;
+	const wroteYesterday = stats.lastActiveDate === yesterdayKey();
+
+	let nextStreakDays = stats.streakDays;
+	if (isFirstWriteToday) {
+		// Either extend the streak (wrote yesterday) or reset to 1 (missed a day)
+		nextStreakDays = wroteYesterday ? stats.streakDays + 1 : 1;
+	}
+	// If lastActiveDate === today, keep streakDays unchanged — already counted this day
 
 	const next: WritingStatsState = {
 		...stats,
 		todayWords: nextTodayWords,
 		todayDate: today,
+		streakDays: nextStreakDays,
 		lastActiveDate: today,
-		streakDays: stats.lastActiveDate === today ? stats.streakDays : nextStreak,
 		totalWordsWritten: stats.totalWordsWritten + delta,
 	};
 

@@ -107,3 +107,7 @@ export function analyzeScreenplayPagination(content: JSONContent | null): Screen
     widowRiskCount,
   };
 }
+
+export function countPagesFromContent(content: JSONContent | null): number {
+  return analyzeScreenplayPagination(content).estimatedPages;
+}

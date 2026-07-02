@@ -12,6 +12,7 @@ import {
 } from '../utils/screenplay-persistence';
 import { getCurrentBlockIndex, getEditorBlockType, setBlockType, splitToBlockType } from '../editor/commands';
 import { recordWordCountDelta, startWritingSession } from '../utils/writing-stats';
+import { loadTrackWritingStats } from '../utils/user-settings';
 
 export function useScreenplayPersistence(documentId: string | undefined) {
 	const { storage } = useDastanApp();
@@ -20,6 +21,10 @@ export function useScreenplayPersistence(documentId: string | undefined) {
 	const loadedDocumentIdRef = useRef<string | null>(null);
 	const saveSchedulerRef = useRef<ReturnType<typeof createDebouncedSaveScheduler> | null>(null);
 	const [isLoaded, setIsLoaded] = useState(false);
+	const lastAutoSnapshotRef = useRef<number>(0);
+	const saveCountSinceSnapshotRef = useRef(0);
+	const AUTO_SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
+	const AUTO_SNAPSHOT_SAVE_INTERVAL = 20;
 	const previousContentRef = useRef<JSONContent | null>(null);
 	const setDocument = useScreenplayStore((state) => state.setCurrentDocument);
 	const setDocumentContent = useScreenplayStore((state) => state.setDocumentContent);
@@ -45,14 +50,27 @@ export function useScreenplayPersistence(documentId: string | undefined) {
 			previousContent: previousContentRef.current,
 		});
 
-		recordWordCountDelta(previousContentRef.current, persistedContent);
+		if (loadTrackWritingStats()) {
+			recordWordCountDelta(previousContentRef.current, persistedContent);
+		}
 		previousContentRef.current = persistedContent;
 
 		await storage.documents.save(snapshot);
-		await storage.versions.saveSnapshot(snapshot);
 		setDocument(snapshot);
 		setSaveStatus('saved');
 		loadedDocumentIdRef.current = snapshot.id;
+
+		saveCountSinceSnapshotRef.current += 1;
+		const now = Date.now();
+		const shouldSnapshot =
+			saveCountSinceSnapshotRef.current >= AUTO_SNAPSHOT_SAVE_INTERVAL ||
+			now - lastAutoSnapshotRef.current >= AUTO_SNAPSHOT_INTERVAL_MS;
+
+		if (shouldSnapshot) {
+			await storage.versions.saveSnapshot(snapshot);
+			lastAutoSnapshotRef.current = now;
+			saveCountSinceSnapshotRef.current = 0;
+		}
 	}, [setDocument, setSaveStatus, storage]);
 
 	useEffect(() => {
