@@ -67,9 +67,25 @@ if (import.meta.env.VITE_DASTAN_CLOUD_URL) {
 
 Cloud registration must:
 
-1. Call `services.aiProviders.register(dastanCloudProvider)`
+1. Call `services.aiProviders.register(dastanCloudProvider)` *(deferred — ai-gateway phase)*
 2. Replace `services.sync`, `services.auth`, `services.share`, `services.quota`, `services.entitlements`, and `services.collaboration`
 3. Never patch or fork `@dastan/editor`, `@dastan/screenplay-model`, or other core packages
+
+### Local development linking
+
+When developing with the gitignored `cloud/` folder nested inside the public repo:
+
+1. Set in `.env.local`:
+   ```bash
+   VITE_DASTAN_CLOUD_URL=http://localhost:5173
+   VITE_SUPABASE_URL=https://lbnkjcxtnguslqoacmua.supabase.co
+   VITE_SUPABASE_PUBLISHABLE_KEY=<your-anon-key>
+   ```
+2. `@dastan/web` resolves `@dastan-cloud/bootstrap` via a Vite alias to `cloud/bootstrap/index.ts`.
+3. Run migrations from `cloud/`: `npm run supabase:push` (after `supabase link`).
+4. Deploy `join-room`: `npm run supabase:deploy:join-room`.
+
+Production builds should depend on a published `@dastan-cloud/bootstrap` package or a git dependency with deploy-time credentials.
 
 ### Dependency direction
 

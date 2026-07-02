@@ -2,43 +2,37 @@ import type { DastanServices } from '@dastan/plugin-api';
 
 export interface RegisterCloudAdaptersOptions {
 	cloudUrl: string;
+	supabaseUrl: string;
+	supabasePublishableKey: string;
 }
 
 /**
- * STUB — no cloud adapters are registered. Entitlements may still report free-tier
- * prompt quotas, but chat must not treat those as usable until this registers
- * the `dastan-cloud` AI provider in `aiProviders`.
- *
  * Registers proprietary cloud adapters when dastan-cloud is available.
- *
- * Today this is a scaffold: it validates the URL and leaves local services in place.
- * When the private dastan-cloud package exists, this will dynamically import
- * `@dastan-cloud/bootstrap` and replace auth, sync, share, quota, entitlements,
- * collaboration, and register the `dastan-cloud` AI provider.
  */
 export async function registerCloudAdapters(
 	services: DastanServices,
-	cloudUrl?: string,
+	options?: RegisterCloudAdaptersOptions,
 ): Promise<DastanServices> {
-	if (!cloudUrl?.trim()) {
+	const cloudUrl = options?.cloudUrl?.trim();
+	const supabaseUrl = options?.supabaseUrl?.trim();
+	const supabasePublishableKey = options?.supabasePublishableKey?.trim();
+
+	if (!cloudUrl || !supabaseUrl || !supabasePublishableKey) {
 		return services;
 	}
 
-	const normalizedUrl = cloudUrl.trim().replace(/\/+$/, '');
+	try {
+		const cloud = await import('@dastan-cloud/bootstrap');
+		return cloud.registerCloudAdapters(services, {
+			cloudUrl,
+			supabaseUrl,
+			supabasePublishableKey,
+		});
+	} catch (error) {
+		if (import.meta.env.DEV) {
+			console.warn('[dastan] Failed to load cloud adapters:', error);
+		}
 
-	if (import.meta.env.DEV) {
-		console.info(
-			'[dastan] Cloud URL configured but cloud adapters are not installed yet:',
-			normalizedUrl,
-		);
+		return services;
 	}
-
-	// Future:
-	// const cloud = await import('@dastan-cloud/bootstrap');
-	// return cloud.registerCloudAdapters(services, { cloudUrl: normalizedUrl });
-	// Cloud bootstrap replaces: sync, auth, share, quota, entitlements, collaboration.
-
-	void normalizedUrl;
-
-	return services;
 }

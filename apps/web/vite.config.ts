@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@dastan-cloud/bootstrap': path.resolve(__dirname, '../../cloud/bootstrap/index.ts'),
     },
   },
 });

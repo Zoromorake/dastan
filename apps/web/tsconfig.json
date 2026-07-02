@@ -17,7 +17,8 @@
     "jsx": "react-jsx",
     "types": ["vite/client"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@dastan-cloud/bootstrap": ["../../cloud/bootstrap/index.ts"]
     }
   },
   "include": ["src"]

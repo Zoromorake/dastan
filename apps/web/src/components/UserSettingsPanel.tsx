@@ -13,6 +13,7 @@ import {
 import { ImageCropDialog } from './ImageCropDialog';
 import { readFileAsDataUrl } from '../utils/image-crop';
 import { AddressBookPanel } from './AddressBookPanel';
+import { CloudAccountSection } from './settings/CloudAccountSection';
 import {
 	AI_KEY_PROVIDERS,
 	AiProviderKeyCard,
@@ -87,6 +88,7 @@ function BinaryChoice({
 }
 
 export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose, initialTab }: UserSettingsPanelProps) {
+	const cloudEnabled = Boolean(import.meta.env.VITE_DASTAN_CLOUD_URL?.trim());
 	const { entitlements, aiProviders } = useDastanApp();
 	const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'profile');
 	const [settings, setSettings] = useState<UserSettingsState>(() => loadUserSettings());
@@ -241,6 +243,8 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 									onChange={(event) => setSettings((current) => ({ ...current, penName: event.target.value }))}
 								/>
 							</SettingsField>
+
+							{cloudEnabled ? <CloudAccountSection theme={ui} /> : null}
 						</div>
 					) : null}
 

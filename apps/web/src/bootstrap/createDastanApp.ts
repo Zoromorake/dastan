@@ -43,7 +43,11 @@ export function createDastanApp(options: CreateDastanAppOptions = {}): DastanSer
 
 export async function createDastanAppAsync(options: CreateDastanAppOptions = {}): Promise<DastanServices> {
 	const services = createDastanApp(options);
-	return registerCloudAdapters(services, options.cloudUrl);
+	return registerCloudAdapters(services, {
+		cloudUrl: options.cloudUrl ?? import.meta.env.VITE_DASTAN_CLOUD_URL ?? '',
+		supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? '',
+		supabasePublishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? '',
+	});
 }
 
 export const defaultDastanApp = createDastanApp({
