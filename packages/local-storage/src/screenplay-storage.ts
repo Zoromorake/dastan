@@ -40,7 +40,7 @@ interface DastanDatabase extends DBSchema {
 }
 
 const DATABASE_NAME = 'dastan';
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 const LAST_DOCUMENT_KEY = 'lastDocumentId';
 const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_VERSIONS_PER_DOCUMENT = 20;
@@ -123,7 +123,7 @@ function normalizeDocumentRecord(document: ScreenplayDocumentRecord): Screenplay
 
 async function getDatabase() {
 	return openDB<DastanDatabase>(DATABASE_NAME, DATABASE_VERSION, {
-		upgrade(database, oldVersion) {
+		upgrade(database) {
 			if (!database.objectStoreNames.contains('documents')) {
 				database.createObjectStore('documents');
 			}
@@ -136,18 +136,16 @@ async function getDatabase() {
 				database.createObjectStore('meta');
 			}
 
-			if (oldVersion < 3 && !database.objectStoreNames.contains('versions')) {
+			if (!database.objectStoreNames.contains('versions')) {
 				database.createObjectStore('versions');
 			}
 
-			if (oldVersion < 4) {
-				if (!database.objectStoreNames.contains('ai_memories')) {
-					database.createObjectStore('ai_memories');
-				}
+			if (!database.objectStoreNames.contains('ai_memories')) {
+				database.createObjectStore('ai_memories');
+			}
 
-				if (!database.objectStoreNames.contains('chat_threads')) {
-					database.createObjectStore('chat_threads');
-				}
+			if (!database.objectStoreNames.contains('chat_threads')) {
+				database.createObjectStore('chat_threads');
 			}
 		},
 	});
@@ -208,6 +206,7 @@ export async function saveVersionSnapshot(document: ScreenplayDocumentRecord): P
 		savedAt: new Date().toISOString(),
 		title: document.title,
 		content: document.content,
+		label: 'Automatic snapshot',
 		isManual: false,
 	};
 
@@ -373,6 +372,17 @@ export async function createProject(title: string, parentProjectId?: string | nu
 	const project = createProjectRecord(title, parentProjectId);
 	await database.put('projects', project, project.id);
 	return project;
+}
+
+export async function saveProject(project: ScreenplayProjectRecord): Promise<void> {
+	const database = await getDatabase();
+	const snapshot = normalizeProjectRecord(project);
+	await database.put('projects', snapshot, snapshot.id);
+}
+
+export async function saveVersion(version: ScreenplayVersionSnapshot): Promise<void> {
+	const database = await getDatabase();
+	await database.put('versions', version, version.id);
 }
 
 export async function renameProject(id: string, title: string): Promise<ScreenplayProjectRecord | null> {
