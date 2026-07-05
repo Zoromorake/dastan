@@ -11,6 +11,7 @@ import {
 	X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getEditorTheme } from '../../utils/editor-theme';
 import { AUTO_MODEL_ID, AI_PROVIDER_LABELS, type AiModelOption } from '../../utils/ai-models';
 import type { AiChatContextMode } from '../../hooks/useAiChat';
 import type { AiInteractionMode } from '../../utils/ai-interaction-mode';
@@ -45,6 +46,7 @@ interface AiChatInputProps {
 	status: 'submitted' | 'streaming' | 'ready' | 'error';
 	canSend: boolean;
 	hasProviderConfigured: boolean;
+	canUseEditorAi: boolean;
 	usingCredits: boolean;
 	creditsRemaining: number | 'unlimited';
 	includeScriptContext: boolean;
@@ -93,6 +95,7 @@ export function AiChatInput({
 	status,
 	canSend,
 	hasProviderConfigured,
+	canUseEditorAi,
 	usingCredits,
 	creditsRemaining,
 	includeScriptContext,
@@ -205,64 +208,45 @@ export function AiChatInput({
 	}, [allModels]);
 
 	// ── Theme classes ────────────────────────────────────────────────────────────
-	const shellClass = isDark
-		? 'border-t border-slate-700 bg-slate-900'
-		: 'border-t border-stone-200 bg-[#f8f5ef]';
-
-	const textareaClass = isDark
-		? 'w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-sm text-slate-100 outline-none placeholder:text-slate-500'
-		: 'w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-sm text-stone-900 outline-none placeholder:text-stone-400';
-
+	const theme = getEditorTheme(isDark);
+	const shellClass = theme.aiInputShell;
+	const textareaClass =
+		'w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-sm text-foreground outline-none placeholder:text-muted-foreground';
 	const chipBase =
 		'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] transition';
-
-	const chipActive = isDark
-		? 'border-amber-600 bg-amber-950/40 text-amber-200 hover:opacity-80'
-		: 'border-amber-400 bg-amber-50 text-stone-900 hover:opacity-80';
-
-	const chipInactive = isDark
-		? 'border-slate-600 text-slate-500 hover:border-slate-500 hover:text-slate-300'
-		: 'border-stone-300 text-stone-500 hover:border-stone-400 hover:text-stone-700';
-
+	const chipActive = theme.accentPill;
+	const chipInactive = theme.statusPill;
 	const chipWarn = isDark
 		? 'border-orange-600/70 bg-orange-950/30 text-orange-200 hover:opacity-80'
 		: 'border-orange-400 bg-orange-50 text-orange-900 hover:opacity-80';
-
-	const infoChipClass = isDark
-		? 'border-slate-700 text-slate-500'
-		: 'border-stone-200 text-stone-400';
-
-	const toolbarBtnBase = isDark
-		? 'inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] text-slate-300 transition hover:border-slate-600 hover:text-slate-100'
-		: 'inline-flex items-center gap-1 rounded-md border border-stone-200 bg-stone-100 px-2 py-1 text-[11px] text-stone-600 transition hover:border-stone-300 hover:text-stone-800';
-
-	const slashMenuClass = isDark
-		? 'absolute bottom-full left-0 right-0 z-20 mb-1 overflow-hidden rounded-xl border border-slate-600 bg-slate-900 shadow-xl'
-		: 'absolute bottom-full left-0 right-0 z-20 mb-1 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-xl';
-
+	const infoChipClass = `border-border ${theme.statusText}`;
+	const toolbarBtnBase = `inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition ${theme.statusPill}`;
+	const modeBtnBase = 'rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.12em] transition';
+	const slashMenuClass = `absolute bottom-full left-0 right-0 z-20 mb-1 overflow-hidden rounded-xl border shadow-xl ${theme.surface} ${theme.border}`;
 	const slashItemClass = (active: boolean) =>
 		cn(
 			'flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition',
-			active
-				? isDark
-					? 'bg-slate-800 text-slate-100'
-					: 'bg-amber-50 text-stone-900'
-				: isDark
-					? 'text-slate-400 hover:bg-slate-800/60'
-					: 'text-stone-600 hover:bg-stone-50',
+			active ? theme.modeActive : `${theme.statusText} hover:bg-accent/60`,
 		);
+	const interactionModes: Array<{ id: AiInteractionMode; label: string }> = [
+		{ id: 'ask', label: 'Ask' },
+		{ id: 'planner', label: 'Planner' },
+		...(canUseEditorAi ? [{ id: 'editor' as const, label: 'Editor' }] : []),
+	];
 
 	const scriptChipActive = includeScriptContext && !selectionActive;
 	const scriptOverLimit = scriptCharCount > 20_000;
 
 	const placeholder =
-		interactionMode === 'writer'
-			? contextMode === 'script'
-				? 'Ask for rewrites, dialogue, or scene edits…'
-				: 'Ask for writing help across your library…'
-			: contextMode === 'script'
-				? 'Ask about your screenplay…'
-				: 'Ask anything about your projects…';
+		interactionMode === 'editor'
+			? 'Tell the editor AI what to change in your script or workspace…'
+			: interactionMode === 'planner'
+				? contextMode === 'script'
+					? 'Ask for structured proposals for scenes, beats, or characters…'
+					: 'Ask for planning help across your library…'
+				: contextMode === 'script'
+					? 'Ask about your screenplay…'
+					: 'Ask anything about your projects…';
 
 	return (
 		<div className={shellClass}>
@@ -439,29 +423,22 @@ export function AiChatInput({
 					isDark ? '' : ''
 				}`}
 			>
-				{/* Interaction mode (Ask / Writer) */}
-				<div className="relative">
-					<select
-						aria-label="Interaction mode"
-						className={cn(
-							toolbarBtnBase,
-							'cursor-pointer appearance-none pr-5',
-							interactionMode === 'writer'
-								? isDark
-									? 'border-amber-700/60 bg-amber-950/30 text-amber-200'
-									: 'border-amber-300 bg-amber-50/80 text-amber-900'
-								: '',
-						)}
-						value={interactionMode}
-						onChange={(e) => onInteractionModeChange(e.target.value as AiInteractionMode)}
-					>
-						<option value="ask">Ask</option>
-						<option value="writer">Writer</option>
-					</select>
-					<ChevronDown
-						className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 opacity-60"
-						size={10}
-					/>
+				{/* Interaction mode (Ask / Planner / Editor) */}
+				<div className="flex items-center gap-0.5" role="group" aria-label="Interaction mode">
+					{interactionModes.map((mode) => (
+						<button
+							key={mode.id}
+							aria-pressed={interactionMode === mode.id}
+							className={cn(
+								modeBtnBase,
+								interactionMode === mode.id ? theme.modeActive : theme.modeIdle,
+							)}
+							type="button"
+							onClick={() => onInteractionModeChange(mode.id)}
+						>
+							{mode.label}
+						</button>
+					))}
 				</div>
 
 				{/* Model selector */}

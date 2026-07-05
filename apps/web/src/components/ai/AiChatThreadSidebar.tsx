@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Trash2, X } from 'lucide-react';
+import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { deleteChatThread, listChatThreads, saveChatThread, type AiChatThread } from '../../utils/ai-memory-storage';
 import { resolveModelOption } from '../../utils/ai-models';
 
@@ -280,33 +280,38 @@ export function AiChatThreadSidebar({
 											</form>
 										) : (
 											<div className="flex items-start gap-1">
-												<div className="min-w-0 flex-1 px-1 py-1">
-													<button
-														className={`block w-full text-left ${
-															thread.id === activeThreadId
-																? isDark
-																	? 'text-amber-200'
-																	: 'text-stone-900'
-																: isDark
-																	? 'text-slate-300 hover:text-slate-100'
-																	: 'text-stone-700 hover:text-stone-900'
-														}`}
-														type="button"
-														onClick={() => {
-															setEditingId(thread.id);
-															setEditTitle(thread.title);
-														}}
-													>
-														<span className="line-clamp-2 text-sm leading-5">{thread.title}</span>
-													</button>
-													<button
-														className={`mt-0.5 block text-left text-[10px] ${isDark ? 'text-slate-500 hover:text-slate-300' : 'text-stone-500 hover:text-stone-700'}`}
-														type="button"
-														onClick={() => onSelectThread(thread.id)}
-													>
+												<button
+													className={`min-w-0 flex-1 px-1 py-1 text-left ${
+														thread.id === activeThreadId
+															? isDark
+																? 'text-amber-200'
+																: 'text-stone-900'
+															: isDark
+																? 'text-slate-300 hover:text-slate-100'
+																: 'text-stone-700 hover:text-stone-900'
+													}`}
+													type="button"
+													onClick={() => onSelectThread(thread.id)}
+												>
+													<span className="line-clamp-2 block text-sm leading-5">{thread.title}</span>
+													<span className={`mt-0.5 block text-[10px] ${isDark ? 'text-slate-500' : 'text-stone-500'}`}>
 														{getModelLabel(thread.model)} · {formatRelativeTime(thread.updatedAt)}
-													</button>
-												</div>
+													</span>
+												</button>
+
+												<button
+													className={`mt-1 shrink-0 rounded p-1 opacity-0 transition group-hover:opacity-100 ${
+														isDark ? 'text-slate-500 hover:text-slate-200' : 'text-stone-400 hover:text-stone-700'
+													}`}
+													type="button"
+													title="Rename thread"
+													onClick={() => {
+														setEditingId(thread.id);
+														setEditTitle(thread.title);
+													}}
+												>
+													<Pencil size={11} />
+												</button>
 
 												<button
 													className={`mt-1 shrink-0 rounded p-1 opacity-0 transition group-hover:opacity-100 ${

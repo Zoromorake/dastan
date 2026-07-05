@@ -1,6 +1,7 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { convertToModelMessages, streamText, type UIMessage } from 'ai';
+import { createEditorAiTools } from './editor-tools';
 
 export type ChatProvider = 'openai' | 'anthropic' | 'google' | 'openrouter' | 'ollama';
 
@@ -10,6 +11,8 @@ export interface ChatRequestBody {
 	model?: string;
 	system?: string;
 	ollamaBaseUrl?: string;
+	enableTools?: boolean;
+	interactionMode?: 'ask' | 'planner' | 'editor';
 }
 
 const defaultOllamaBaseUrl = 'http://localhost:11434/v1';
@@ -77,12 +80,21 @@ export async function handleChatRequest(request: Request): Promise<Response> {
 	}
 
 	const model = body.model ?? (provider === 'anthropic' ? 'claude-sonnet-4-20250514' : provider === 'ollama' ? 'llama3.2' : 'gpt-4o');
+	const enableTools = body.enableTools === true;
+	const authHeader = request.headers.get('authorization')?.trim();
+	const devEditorTools = request.headers.get('x-dastan-dev-editor') === '1';
+
+	if (enableTools && !authHeader && !devEditorTools) {
+		return new Response('Editor AI requires a signed-in account with editor access.', { status: 403 });
+	}
 
 	try {
 		const result = streamText({
 			model: resolveModel(provider, model, apiKey ?? 'ollama', body.ollamaBaseUrl),
 			system: body.system ?? 'You are a helpful screenplay writing assistant.',
 			messages: await convertToModelMessages(truncateMessageHistory(body.messages ?? [])),
+			tools: enableTools ? createEditorAiTools() : undefined,
+			maxSteps: enableTools ? 5 : undefined,
 		});
 
 		return result.toUIMessageStreamResponse();

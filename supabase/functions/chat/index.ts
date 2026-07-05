@@ -1,10 +1,10 @@
 // Supabase Edge Function — BYOK AI chat proxy for production.
 // Logic mirrors @dastan/ai-providers/server (packages/ai-providers/src/server/chat-handler.ts).
-// Deno cannot import the workspace package directly; keep these in sync when changing providers.
 
 import { anthropic } from 'npm:@ai-sdk/anthropic@2';
 import { openai } from 'npm:@ai-sdk/openai@2';
-import { convertToModelMessages, streamText, type UIMessage } from 'npm:ai@5';
+import { convertToModelMessages, streamText, tool, type UIMessage } from 'npm:ai@5';
+import { z } from 'npm:zod@3';
 
 type ChatProvider = 'openai' | 'anthropic' | 'google' | 'openrouter' | 'ollama';
 
@@ -14,9 +14,71 @@ interface ChatRequestBody {
 	model?: string;
 	system?: string;
 	ollamaBaseUrl?: string;
+	enableTools?: boolean;
 }
 
 const defaultOllamaBaseUrl = 'http://localhost:11434/v1';
+const MAX_HISTORY_MESSAGES = 40;
+
+function truncateMessageHistory(messages: UIMessage[]): UIMessage[] {
+	if (messages.length <= MAX_HISTORY_MESSAGES) {
+		return messages;
+	}
+
+	return messages.slice(-MAX_HISTORY_MESSAGES);
+}
+
+function createEditorAiTools() {
+	return {
+		insert_scene: tool({
+			description: 'Insert a new properly-typed scene into the screenplay.',
+			parameters: z.object({
+				sceneHeading: z.string(),
+				action: z.string().optional(),
+				character: z.string().optional(),
+				dialogue: z.string().optional(),
+			}),
+		}),
+		rewrite_dialogue: tool({
+			description: 'Rewrite dialogue for a specific character in the screenplay.',
+			parameters: z.object({
+				character: z.string(),
+				newDialogue: z.string(),
+				sceneIndex: z.number().optional(),
+			}),
+		}),
+		update_beat: tool({
+			description: 'Update a beat on the beat board.',
+			parameters: z.object({
+				beatId: z.string().optional(),
+				heading: z.string().optional(),
+				beat: z.string(),
+			}),
+		}),
+		edit_character: tool({
+			description: 'Update a character profile in the World tab.',
+			parameters: z.object({
+				name: z.string(),
+				age: z.string().optional(),
+				arc: z.string().optional(),
+				notes: z.string().optional(),
+			}),
+		}),
+		update_outline: tool({
+			description: 'Update a structure beat in the outline.',
+			parameters: z.object({
+				beatLabel: z.string(),
+				summary: z.string(),
+			}),
+		}),
+		update_notes: tool({
+			description: 'Update global notes for the script.',
+			parameters: z.object({
+				notes: z.string(),
+			}),
+		}),
+	};
+}
 
 function resolveModel(provider: ChatProvider, model: string, apiKey: string, ollamaBaseUrl?: string) {
 	switch (provider) {
@@ -59,6 +121,7 @@ Deno.serve(async (request) => {
 	}
 
 	const apiKey = request.headers.get('x-api-key')?.trim();
+	const authHeader = request.headers.get('authorization')?.trim();
 
 	let body: ChatRequestBody;
 
@@ -69,10 +132,18 @@ Deno.serve(async (request) => {
 	}
 
 	const provider = body.provider ?? 'anthropic';
+	const enableTools = body.enableTools === true;
 
 	if (!apiKey && provider !== 'ollama') {
 		return new Response('Missing API key. Add a provider key in Settings → AI.', {
 			status: 401,
+			headers: corsHeaders,
+		});
+	}
+
+	if (enableTools && !authHeader) {
+		return new Response('Editor AI requires a signed-in account with editor access.', {
+			status: 403,
 			headers: corsHeaders,
 		});
 	}
@@ -90,7 +161,9 @@ Deno.serve(async (request) => {
 		const result = streamText({
 			model: resolveModel(provider, model, apiKey ?? 'ollama', body.ollamaBaseUrl),
 			system: body.system ?? 'You are a helpful screenplay writing assistant.',
-			messages: await convertToModelMessages(body.messages ?? []),
+			messages: await convertToModelMessages(truncateMessageHistory(body.messages ?? [])),
+			tools: enableTools ? createEditorAiTools() : undefined,
+			maxSteps: enableTools ? 5 : undefined,
 		});
 
 		const response = result.toUIMessageStreamResponse();

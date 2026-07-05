@@ -7,7 +7,7 @@ import { useDastanApp } from '../context/DastanAppProvider';
 import type { CollaboratorPresence } from '@dastan/plugin-api';
 import { buildGeneralAiContext } from '../utils/ai-context-general';
 import { buildAiContext } from '../utils/ai-context';
-import { LONG_CONVERSATION_MESSAGE_THRESHOLD } from '../utils/ai-context-summary';
+import { LONG_CONVERSATION_MESSAGE_THRESHOLD, compressConversationHistory } from '../utils/ai-context-summary';
 import {
 	createAiMemory,
 	createChatThread,
@@ -21,6 +21,7 @@ import {
 import { extractMemorySuggestions } from '../utils/ai-memory-extract';
 import { toCollaborationChatMessage } from '../utils/collaboration-chat';
 import { useCollaborationChatSync } from './useCollaborationChatSync';
+import { isDevEditorAiEnabled } from '../utils/dev-editor-ai';
 import {
 	AUTO_MODEL_ID,
 	AI_MODEL_REGISTRY,
@@ -32,6 +33,8 @@ import {
 } from '../utils/ai-models';
 import { loadAiSettings, saveAiSettings, type AiSettings } from '../utils/ai-settings';
 import type { AiInteractionMode } from '../utils/ai-interaction-mode';
+import { interactionModeEnablesTools } from '../utils/ai-interaction-mode';
+import { extractToolInvocations } from '../utils/ai-tool-executor';
 import { GENERAL_CHAT_DOCUMENT_ID } from '../utils/user-settings';
 
 export type AiChatContextMode = 'general' | 'script';
@@ -84,6 +87,8 @@ interface UseAiChatOptions {
 	activeCollaborators?: CollaboratorPresence[];
 	panelOpen?: boolean;
 	selectionText?: string | null;
+	activeWorkspaceTab?: string | null;
+	onToolInvocations?: (invocations: Array<{ toolName: string; input: unknown }>) => void;
 	onThreadChange: (thread: AiChatThread) => void;
 	onThreadCreated: (thread: AiChatThread) => void;
 }
@@ -104,6 +109,8 @@ export function useAiChat({
 	activeCollaborators = [],
 	panelOpen = true,
 	selectionText = null,
+	activeWorkspaceTab = null,
+	onToolInvocations,
 	onThreadChange,
 	onThreadCreated,
 }: UseAiChatOptions) {
@@ -246,6 +253,7 @@ export function useAiChat({
 			includeWorkspaceContext,
 			selectionText: activeSelectionText,
 			interactionMode,
+			activeWorkspaceTab,
 			activeCollaborators,
 		}).systemPrompt;
 	}, [
@@ -261,9 +269,15 @@ export function useAiChat({
 		includeScriptContext,
 		includeWorkspaceContext,
 		activeSelectionText,
+		activeWorkspaceTab,
 		activeCollaborators,
 		libraryDocuments,
 	]);
+
+	const editorToolsEnabled =
+		interactionModeEnablesTools(interactionMode) &&
+		entitlements.canUseEditorAi() &&
+		(auth.isSignedIn() || isDevEditorAiEnabled());
 
 	const effectiveIncludeScriptContext = includeScriptContext && !selectionActive;
 
@@ -294,33 +308,37 @@ export function useAiChat({
 		() =>
 			new DefaultChatTransport({
 				api: providerAdapter?.resolveChatApiUrl(settings) ?? settings.chatApiUrl,
-				prepareSendMessagesRequest: async ({ body, messages }) => {
+				prepareSendMessagesRequest: async ({ body, messages: requestMessages }) => {
 					const currentSettings = settingsRef.current;
 					const modelForRequest = modelOverrideRef.current ?? selectedModel;
 					modelOverrideRef.current = null;
 					const resolved = resolveEffectiveModel(modelForRequest, currentSettings);
 					const apiKey = aiProvidersRef.current.get(resolved.provider)?.resolveApiKey(currentSettings);
+					const accessToken = auth.getAccessToken ? await auth.getAccessToken() : null;
+					const { systemAppendix, messages: compressedMessages } = compressConversationHistory(requestMessages);
+					const requestSystem = systemAppendix ? `${systemPrompt}\n\n${systemAppendix}` : systemPrompt;
 
 					return {
 						body: {
 							...body,
-							messages,
+							messages: compressedMessages,
 							provider: resolved.provider,
 							model: resolved.modelId,
-							system: systemPrompt,
+							system: requestSystem,
+							interactionMode,
+							enableTools: editorToolsEnabled,
 							...(resolved.provider === 'ollama'
 								? { ollamaBaseUrl: currentSettings.ollamaBaseUrl }
 								: {}),
 						},
-						headers: apiKey
-							? {
-									'x-api-key': apiKey,
-								}
-							: undefined,
+						headers: {
+							...(apiKey ? { 'x-api-key': apiKey } : {}),
+							...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
+						},
 					};
 				},
 			}),
-		[providerAdapter, settings, selectedModel, systemPrompt],
+		[providerAdapter, settings, selectedModel, systemPrompt, interactionMode, editorToolsEnabled, auth],
 	);
 
 	const persistThread = useCallback(
@@ -377,6 +395,14 @@ export function useAiChat({
 				if (!lastAssistant) {
 					setMemorySuggestions([]);
 					return;
+				}
+
+				if (editorToolsEnabled && onToolInvocations) {
+					const invocations = extractToolInvocations(lastAssistant);
+
+					if (invocations.length > 0) {
+						onToolInvocations(invocations);
+					}
 				}
 
 				applyMemorySuggestions(getTextFromUiMessage(lastAssistant));

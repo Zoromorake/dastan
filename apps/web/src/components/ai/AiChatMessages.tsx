@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { UIMessage } from 'ai';
-import { Bookmark, Check, Copy, CornerDownLeft, Pencil, Replace, RotateCcw, X } from 'lucide-react';
+import { Bookmark, Check, Copy, CornerDownLeft, Pencil, Replace, RotateCcw, Undo2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { AUTO_MODEL_ID } from '../../utils/ai-models';
 import type { AiMemory } from '../../utils/ai-memory-storage';
@@ -27,6 +27,9 @@ interface AiChatMessagesProps {
 	selectionActive?: boolean;
 	onInsertText?: (text: string) => void;
 	onReplaceSelection?: (text: string) => void;
+	/** Id of the assistant message that was automatically inserted into the script (Writer mode). */
+	autoInsertedMessageId?: string | null;
+	onUndoAutoInsert?: () => void;
 	memorySuggestions?: MemorySuggestion[];
 	onApproveMemory?: (id: string, scope: AiMemory['scope']) => Promise<void>;
 	onDismissMemory?: (id: string) => void;
@@ -164,6 +167,8 @@ export function AiChatMessages({
 	selectionActive = false,
 	onInsertText,
 	onReplaceSelection,
+	autoInsertedMessageId = null,
+	onUndoAutoInsert,
 	memorySuggestions = [],
 	onApproveMemory,
 	onDismissMemory,
@@ -270,6 +275,7 @@ export function AiChatMessages({
 				const isLastAssistant = !isUser && message.id === lastMessage?.id;
 				const isEditing = editingId === message.id;
 				const showStreamingCursor = isStreamingAssistant && isLastAssistant;
+				const wasAutoInserted = !isUser && message.id === autoInsertedMessageId;
 
 				return (
 					<div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -342,7 +348,28 @@ export function AiChatMessages({
 								</div>
 							)}
 
-							{!isUser && !isEditing ? (
+							{!isUser && !isEditing && wasAutoInserted ? (
+								<div
+									className={`mt-2 flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 text-[10px] uppercase tracking-[0.14em] ${
+										isDark ? 'border-emerald-800/50 bg-emerald-950/20 text-emerald-200' : 'border-emerald-300 bg-emerald-50 text-emerald-800'
+									}`}
+								>
+									<Check size={12} />
+									Inserted into script
+									{onUndoAutoInsert ? (
+										<button
+											className={`ml-auto inline-flex items-center gap-1 rounded-md border px-2 py-1 ${
+												isDark ? 'border-emerald-700 text-emerald-100 hover:bg-emerald-900/40' : 'border-emerald-400 text-emerald-900 hover:bg-emerald-100'
+											}`}
+											type="button"
+											onClick={onUndoAutoInsert}
+										>
+											<Undo2 size={12} />
+											Undo
+										</button>
+									) : null}
+								</div>
+							) : !isUser && !isEditing ? (
 								<div className="mt-2 flex flex-wrap items-center gap-2">
 									<button
 										className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${

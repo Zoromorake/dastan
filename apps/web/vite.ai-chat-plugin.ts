@@ -42,6 +42,8 @@ export function aiChatDevPlugin(): Plugin {
 								);
 							}
 
+							headers.set('x-dastan-dev-editor', '1');
+
 							const request = new Request('http://localhost/api/chat', {
 								method: 'POST',
 								headers,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSONContent } from '@tiptap/core';
-import { Brain, Clock, MoreHorizontal, PanelRightClose, Plus, X } from 'lucide-react';
+import { Brain, MessageSquare, MoreHorizontal, PanelRightClose, Plus, X } from 'lucide-react';
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -21,17 +21,42 @@ import {
 } from '../../utils/ai-interaction-mode';
 import { formatWorkspaceSummary } from '../../utils/ai-context';
 import { toPlainTextScreenplay } from '../../utils/screenplay-text';
+import { looksLikeScreenplayText } from '../../utils/insert-screenplay-text';
 import { GENERAL_CHAT_DOCUMENT_ID } from '../../utils/user-settings';
 import { AiChatInput } from './AiChatInput';
 import { AiChatMessages } from './AiChatMessages';
 import { AiChatThreadSidebar } from './AiChatThreadSidebar';
 import { AiMemoryDrawer } from './AiMemoryDrawer';
+import { useDastanApp } from '../../context/DastanAppProvider';
+import { executeAiTool } from '../../utils/ai-tool-executor';
+import { formatToolPreview, type ToolInvocationPreview } from '../../utils/ai-tool-preview';
 import { useEditorCommands } from '../../context/EditorCommandContext';
+import { useScreenplayStore } from '../../store';
+import { getEditorTheme } from '../../utils/editor-theme';
 
 const PANEL_WIDTH_STORAGE_KEY = 'dastan.ai-panel-width';
 const MIN_PANEL_WIDTH = 280;
 const MAX_PANEL_WIDTH = 560;
 const DEFAULT_PANEL_WIDTH = 360;
+/** Minimum character count before treating an assistant reply as "content to write", not just chat. */
+const AUTO_INSERT_MIN_LENGTH = 300;
+
+function getUiMessageText(message: { parts: Array<{ type: string; text?: string }> }): string {
+	return message.parts
+		.filter((part) => part.type === 'text')
+		.map((part) => part.text ?? '')
+		.join('');
+}
+
+function shouldAutoInsert(text: string): boolean {
+	const trimmed = text.trim();
+
+	if (trimmed.length < AUTO_INSERT_MIN_LENGTH) {
+		return false;
+	}
+
+	return looksLikeScreenplayText(trimmed);
+}
 
 function loadPanelWidth(): number {
 	if (typeof window === 'undefined') {
@@ -93,6 +118,7 @@ interface AiChatPanelProps {
 	/** Collaboration room id for shared AI threads (editor variant). */
 	collaborationRoomId?: string | null;
 	activeCollaborators?: CollaboratorPresence[];
+	activeWorkspaceTab?: string | null;
 }
 
 export function AiChatPanel({
@@ -109,9 +135,13 @@ export function AiChatPanel({
 	onPendingPromptHandled,
 	collaborationRoomId = null,
 	activeCollaborators = [],
+	activeWorkspaceTab = null,
 }: AiChatPanelProps) {
 	const isDark = resolvedTheme === 'dark';
+	const editorTheme = getEditorTheme(isDark);
 	const editorCommands = useEditorCommands();
+	const { entitlements, storage } = useDastanApp();
+	const currentDocument = useScreenplayStore((state) => state.currentDocument);
 
 	// ── Tab state ──────────────────────────────────────────────────────────────
 	const [openTabs, setOpenTabs] = useState<ChatTab[]>(() => [createChatTab()]);
@@ -127,10 +157,39 @@ export function AiChatPanel({
 	const [threadSidebarOpen, setThreadSidebarOpen] = useState(false);
 	const contextMode: AiChatContextMode = variant === 'hub' ? 'general' : 'script';
 	const [interactionMode, setInteractionMode] = useState<AiInteractionMode>(() =>
-		loadInteractionMode(variant === 'editor' ? 'writer' : 'ask'),
+		loadInteractionMode(variant === 'editor' ? 'planner' : 'ask'),
 	);
 	const [overrideSelectionText, setOverrideSelectionText] = useState<string | null>(null);
 	const [longConversationBannerDismissed, setLongConversationBannerDismissed] = useState(false);
+	const [autoInsertedMessageId, setAutoInsertedMessageId] = useState<string | null>(null);
+	const [pendingToolReview, setPendingToolReview] = useState<ToolInvocationPreview[] | null>(null);
+	const acceptPendingTools = useCallback(async () => {
+		if (!pendingToolReview?.length || !editorCommands) {
+			return;
+		}
+
+		if (currentDocument) {
+			await storage.versions.saveSnapshot(currentDocument);
+		}
+
+		for (const preview of pendingToolReview) {
+			executeAiTool(preview.toolName, preview.input, editorCommands);
+		}
+
+		setPendingToolReview(null);
+	}, [currentDocument, editorCommands, pendingToolReview, storage]);
+
+	const rejectPendingTools = useCallback(() => {
+		setPendingToolReview(null);
+	}, []);
+
+	const snapshotBeforeEditorInsert = useCallback(async () => {
+		if (currentDocument) {
+			await storage.versions.saveSnapshot(currentDocument);
+		}
+	}, [currentDocument, storage]);
+	const autoInsertHandledIdsRef = useRef<Set<string>>(new Set());
+	const prevChatStatusRef = useRef<'submitted' | 'streaming' | 'ready' | 'error'>('ready');
 	const [panelWidth, setPanelWidth] = useState(loadPanelWidth);
 	const [isWideLayout, setIsWideLayout] = useState(
 		() => typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches,
@@ -175,6 +234,10 @@ export function AiChatPanel({
 	useEffect(() => {
 		setOverrideSelectionText(null);
 	}, [selectionText]);
+
+	useEffect(() => {
+		setAutoInsertedMessageId(null);
+	}, [activeTabId]);
 
 	const threadDocumentId =
 		contextMode === 'general'
@@ -241,6 +304,14 @@ export function AiChatPanel({
 		activeCollaborators,
 		panelOpen: open,
 		selectionText: effectiveSelectionText ?? null,
+		activeWorkspaceTab,
+		onToolInvocations: (invocations) => {
+			if (invocations.length === 0) {
+				return;
+			}
+
+			setPendingToolReview(invocations.map((invocation) => formatToolPreview(invocation.toolName, invocation.input)));
+		},
 		onThreadChange: handleThreadChange,
 		onThreadCreated: handleThreadCreated,
 	});
@@ -250,6 +321,53 @@ export function AiChatPanel({
 			chat.refreshSettings();
 		}
 	}, [chat.refreshSettings, open]);
+
+	// ── Auto-insert long-form script output in Writer mode ────────────────────
+	useEffect(() => {
+		const prevStatus = prevChatStatusRef.current;
+		prevChatStatusRef.current = chat.status;
+
+		const justFinished = (prevStatus === 'streaming' || prevStatus === 'submitted') && chat.status === 'ready';
+
+		if (!justFinished || variant !== 'editor' || interactionMode !== 'planner' || !editorCommands) {
+			return;
+		}
+
+		const lastMessage = chat.messages.at(-1);
+
+		if (
+			!lastMessage ||
+			lastMessage.role !== 'assistant' ||
+			autoInsertHandledIdsRef.current.has(lastMessage.id)
+		) {
+			return;
+		}
+
+		autoInsertHandledIdsRef.current.add(lastMessage.id);
+		const text = getUiMessageText(lastMessage);
+
+		if (!shouldAutoInsert(text)) {
+			return;
+		}
+
+		void (async () => {
+			if (currentDocument) {
+				await storage.versions.saveSnapshot(currentDocument);
+			}
+
+			editorCommands.insertAtCursor(text);
+			setAutoInsertedMessageId(lastMessage.id);
+		})();
+	}, [chat.messages, chat.status, currentDocument, editorCommands, interactionMode, storage, variant]);
+
+	const handleUndoAutoInsert = useCallback(() => {
+		if (!editorCommands) {
+			return;
+		}
+
+		editorCommands.undoLastInsert();
+		setAutoInsertedMessageId(null);
+	}, [editorCommands]);
 
 	useEffect(() => {
 		const prompt = pendingPrompt?.trim();
@@ -385,11 +503,17 @@ export function AiChatPanel({
 				const next = tabs.filter((t) => t.id !== tabId);
 
 				if (tabId === activeTabId) {
-					// Activate the nearest remaining tab
 					const closedIdx = tabs.findIndex((t) => t.id === tabId);
 					const nextActive = next[Math.min(closedIdx, next.length - 1)];
+
 					if (nextActive) {
 						setActiveTabId(nextActive.id);
+
+						if (nextActive.threadId) {
+							void chat.selectThread(nextActive.threadId);
+						} else {
+							void chat.startNewThread();
+						}
 					}
 				}
 
@@ -397,6 +521,22 @@ export function AiChatPanel({
 			});
 		},
 		[activeTabId, chat],
+	);
+
+	const activateChatTab = useCallback(
+		(tab: ChatTab) => {
+			setActiveTabId(tab.id);
+
+			if (tab.threadId) {
+				void chat.selectThread(tab.threadId);
+				return;
+			}
+
+			if (tab.isNew) {
+				void chat.startNewThread();
+			}
+		},
+		[chat],
 	);
 
 	// ── Early return ───────────────────────────────────────────────────────────
@@ -408,17 +548,10 @@ export function AiChatPanel({
 	const isInline = variant === 'editor' && isWideLayout;
 
 	const panelClass = isInline
-		? isDark
-			? 'relative z-20 flex shrink-0 flex-col overflow-hidden border-l border-slate-700 bg-slate-900'
-			: 'relative z-20 flex shrink-0 flex-col overflow-hidden border-l border-stone-200 bg-[#f8f5ef]'
-		: isDark
-			? 'fixed inset-x-0 top-28 bottom-0 z-50 flex w-full flex-col overflow-hidden border-t border-slate-700 bg-slate-900 shadow-[0_-20px_60px_rgba(0,0,0,0.35)] sm:inset-x-auto sm:right-0 sm:border-l sm:border-t-0 sm:shadow-[-20px_0_60px_rgba(0,0,0,0.35)]'
-			: 'fixed inset-x-0 top-28 bottom-0 z-50 flex w-full flex-col overflow-hidden border-t border-stone-200 bg-[#f8f5ef] shadow-[0_-20px_60px_rgba(28,25,23,0.12)] sm:inset-x-auto sm:right-0 sm:border-l sm:border-t-0 sm:shadow-[-20px_0_60px_rgba(28,25,23,0.12)]';
+		? `relative z-20 flex shrink-0 flex-col overflow-hidden border-l ${editorTheme.aiPanel}`
+		: `fixed inset-x-0 top-28 bottom-0 z-50 flex w-full flex-col overflow-hidden border-t shadow-[0_-20px_60px_rgba(0,0,0,0.35)] sm:inset-x-auto sm:right-0 sm:border-l sm:border-t-0 sm:shadow-[-20px_0_60px_rgba(0,0,0,0.35)] ${editorTheme.aiPanel}`;
 
-	// ── Icon button helper ─────────────────────────────────────────────────────
-	const iconBtnClass = isDark
-		? 'flex shrink-0 items-center justify-center rounded p-1 text-slate-400 transition hover:bg-slate-700 hover:text-slate-200'
-		: 'flex shrink-0 items-center justify-center rounded p-1 text-stone-500 transition hover:bg-stone-200 hover:text-stone-800';
+	const iconBtnClass = editorTheme.aiIconBtn;
 
 	const firstLibraryTitle = libraryDocuments[0]?.title;
 
@@ -452,11 +585,17 @@ export function AiChatPanel({
 					setThreadSidebarOpen(false);
 				}}
 				onSelectThread={(threadId) => {
-					// Update active tab to show the selected thread
-					setOpenTabs((tabs) =>
-						tabs.map((t) => (t.id === activeTabId ? { ...t, threadId, isNew: false } : t)),
-					);
-					void chat.selectThread(threadId);
+					const existingTab = openTabs.find((tab) => tab.threadId === threadId);
+
+					if (existingTab) {
+						activateChatTab(existingTab);
+					} else {
+						setOpenTabs((tabs) =>
+							tabs.map((t) => (t.id === activeTabId ? { ...t, threadId, isNew: false } : t)),
+						);
+						void chat.selectThread(threadId);
+					}
+
 					setThreadSidebarOpen(false);
 				}}
 				onThreadDeleted={(threadId) => {
@@ -475,13 +614,9 @@ export function AiChatPanel({
 				onThreadRenamed={() => setThreadRefreshKey((k) => k + 1)}
 			/>
 
-			{/* ── Tab bar ──────────────────────────────────────────────────────── */}
-			<div
-				className={`relative z-10 flex h-10 shrink-0 items-stretch border-b ${
-					isDark ? 'border-slate-700 bg-slate-900' : 'border-stone-200 bg-[#f8f5ef]'
-				}`}
-			>
-				{/* Scrollable tabs */}
+			{/* ── Chat tabs ──────────────────────────────────────────────────────── */}
+			<div className={`relative z-10 flex h-10 shrink-0 items-stretch border-b ${editorTheme.aiTabBar}`}>
+				{/* Scrollable chats */}
 				<div className="flex min-w-0 flex-1 items-stretch overflow-x-auto scrollbar-none">
 					{openTabs.map((tab) => {
 						const isActive = tab.id === activeTabId;
@@ -489,30 +624,22 @@ export function AiChatPanel({
 						return (
 							<div
 								key={tab.id}
-								className={`group relative flex min-w-0 max-w-[10rem] shrink-0 items-center border-r ${
-									isDark ? 'border-slate-700' : 'border-stone-200'
-								} ${
-									isActive
-										? isDark
-											? 'bg-slate-800 text-slate-100'
-											: 'bg-white text-stone-900'
-										: isDark
-											? 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
-											: 'text-stone-500 hover:bg-stone-100 hover:text-stone-700'
+								className={`group relative flex min-w-0 max-w-[10rem] shrink-0 items-center border-r border-border ${
+									isActive ? editorTheme.aiTabActive : editorTheme.aiTabIdle
 								}`}
 							>
 								<button
 									className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-2 text-left text-xs"
 									type="button"
-									onClick={() => setActiveTabId(tab.id)}
+									onClick={() => activateChatTab(tab)}
 								>
 									<span className="truncate">{tab.title}</span>
 								</button>
 								<button
-									aria-label="Close tab"
+									aria-label="Close chat"
 									className={`mr-1 shrink-0 rounded p-0.5 opacity-0 transition group-hover:opacity-100 ${
 										isActive ? 'opacity-100' : ''
-									} ${isDark ? 'hover:bg-slate-700 hover:text-slate-100' : 'hover:bg-stone-200 hover:text-stone-900'}`}
+									} hover:bg-accent hover:text-foreground`}
 									type="button"
 									onClick={(e) => {
 										e.stopPropagation();
@@ -527,11 +654,7 @@ export function AiChatPanel({
 				</div>
 
 				{/* Action buttons */}
-				<div
-					className={`flex shrink-0 items-center gap-0.5 border-l px-1.5 ${
-						isDark ? 'border-slate-700' : 'border-stone-200'
-					}`}
-				>
+				<div className="flex shrink-0 items-center gap-0.5 border-l border-border px-1.5">
 					<button
 						aria-label="New chat"
 						className={iconBtnClass}
@@ -542,16 +665,6 @@ export function AiChatPanel({
 						<Plus size={14} />
 					</button>
 
-					<button
-						aria-label="Chat history"
-						className={iconBtnClass}
-						title="Chat history"
-						type="button"
-						onClick={() => setThreadSidebarOpen(true)}
-					>
-						<Clock size={14} />
-					</button>
-
 					<DropdownMenu>
 						<DropdownMenuTrigger
 							aria-label="More options"
@@ -560,7 +673,14 @@ export function AiChatPanel({
 						>
 							<MoreHorizontal size={14} />
 						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="z-[100] w-40">
+						<DropdownMenuContent align="end" className="z-[100] w-44">
+							<DropdownMenuItem
+								className="gap-2 text-xs"
+								onClick={() => setThreadSidebarOpen(true)}
+							>
+								<MessageSquare size={12} />
+								All chats
+							</DropdownMenuItem>
 							<DropdownMenuItem
 								className="gap-2 text-xs"
 								onClick={() => setMemoryDrawerOpen(true)}
@@ -599,19 +719,11 @@ export function AiChatPanel({
 
 			{/* Long conversation warning */}
 			{chat.conversationLong && !longConversationBannerDismissed ? (
-				<div
-					className={`flex items-start justify-between gap-3 border-b px-3 py-2 text-xs ${
-						isDark
-							? 'border-slate-700 bg-amber-950/20 text-amber-100'
-							: 'border-stone-200 bg-amber-50 text-amber-950'
-					}`}
-				>
+				<div className={`flex items-start justify-between gap-3 border-b px-3 py-2 text-xs ${editorTheme.warningBanner}`}>
 					<p>Conversation is long — start a new chat for best results.</p>
 					<div className="flex shrink-0 items-center gap-2">
 						<button
-							className={`rounded border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] ${
-								isDark ? 'border-amber-700 text-amber-200' : 'border-amber-400 text-stone-900'
-							}`}
+							className={`rounded border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] ${editorTheme.accentPill}`}
 							type="button"
 							onClick={() => {
 								openNewTab();
@@ -622,7 +734,7 @@ export function AiChatPanel({
 						</button>
 						<button
 							aria-label="Dismiss warning"
-							className={`rounded border p-1 ${isDark ? 'border-slate-600 text-slate-400' : 'border-stone-300 text-stone-500'}`}
+							className={`rounded border p-1 ${editorTheme.statusPill}`}
 							type="button"
 							onClick={() => setLongConversationBannerDismissed(true)}
 						>
@@ -655,19 +767,27 @@ export function AiChatPanel({
 					}}
 					selectionActive={selectionActive}
 					onInsertText={
-						interactionMode === 'writer' && variant === 'editor' && editorCommands
+						(interactionMode === 'planner' || interactionMode === 'editor') && variant === 'editor' && editorCommands
 							? (text) => {
-									editorCommands.insertAtCursor(text);
+									void (async () => {
+										await snapshotBeforeEditorInsert();
+										editorCommands.insertAtCursor(text);
+									})();
 								}
 							: undefined
 					}
 					onReplaceSelection={
-						interactionMode === 'writer' && variant === 'editor' && editorCommands
+						(interactionMode === 'planner' || interactionMode === 'editor') && variant === 'editor' && editorCommands
 							? (text) => {
-									editorCommands.replaceSelection(text);
+									void (async () => {
+										await snapshotBeforeEditorInsert();
+										editorCommands.replaceSelection(text);
+									})();
 								}
 							: undefined
 					}
+					autoInsertedMessageId={autoInsertedMessageId}
+					onUndoAutoInsert={handleUndoAutoInsert}
 					memorySuggestions={chat.memorySuggestions}
 					onApproveMemory={chat.approveMemorySuggestion}
 					onDismissMemory={chat.dismissMemorySuggestion}
@@ -675,10 +795,42 @@ export function AiChatPanel({
 			</div>
 
 			{chat.error ? (
-				<div
-					className={`border-t px-4 py-2 text-xs text-red-500 ${isDark ? 'border-slate-700' : 'border-stone-200'}`}
-				>
+				<div className={`border-t px-4 py-2 text-xs text-red-500 ${editorTheme.border}`}>
 					{chat.error}
+				</div>
+			) : null}
+
+			{pendingToolReview && pendingToolReview.length > 0 ? (
+				<div className={`border-t px-3 py-3 text-xs ${editorTheme.border}`}>
+					<p className={`mb-2 font-medium ${editorTheme.statusText}`}>Review AI changes</p>
+					<div className="mb-3 max-h-40 space-y-2 overflow-y-auto">
+						{pendingToolReview.map((preview, index) => (
+							<pre
+								key={`${preview.toolName}-${index}`}
+								className={`whitespace-pre-wrap rounded-lg border p-2 font-mono text-[11px] leading-relaxed ${editorTheme.statusPill}`}
+							>
+								{preview.summary}
+							</pre>
+						))}
+					</div>
+					<div className="flex gap-2">
+						<button
+							className={`rounded-md border px-3 py-1.5 text-[11px] font-medium ${editorTheme.accentPill}`}
+							type="button"
+							onClick={() => {
+								void acceptPendingTools();
+							}}
+						>
+							Accept
+						</button>
+						<button
+							className={`rounded-md border px-3 py-1.5 text-[11px] ${editorTheme.statusPill}`}
+							type="button"
+							onClick={rejectPendingTools}
+						>
+							Reject
+						</button>
+					</div>
 				</div>
 			) : null}
 
@@ -696,6 +848,7 @@ export function AiChatPanel({
 					status={chat.status}
 					canSend={chat.canSend}
 					hasProviderConfigured={chat.hasProviderConfigured}
+					canUseEditorAi={entitlements.canUseEditorAi()}
 					usingCredits={chat.usingCredits}
 					creditsRemaining={chat.creditsRemaining}
 					includeScriptContext={chat.effectiveIncludeScriptContext}
