@@ -13,6 +13,7 @@ import { localQuotaService } from '../services/local-quota';
 import { localShareService } from '../services/local-share';
 import { localStorageBackend } from '../services/local-storage-backend';
 import { localSyncService } from '../services/local-sync';
+import { wrapDevEntitlements } from '../utils/dev-entitlements';
 
 export interface CreateDastanAppOptions {
 	cloudUrl?: string;
@@ -31,7 +32,7 @@ export function createDastanApp(options: CreateDastanAppOptions = {}): DastanSer
 	return {
 		storage: localStorageBackend,
 		aiProviders,
-		entitlements: freeEntitlements,
+		entitlements: wrapDevEntitlements(freeEntitlements),
 		share: localShareService,
 		sync: localSyncService,
 		auth: localAuthService,
@@ -43,11 +44,16 @@ export function createDastanApp(options: CreateDastanAppOptions = {}): DastanSer
 
 export async function createDastanAppAsync(options: CreateDastanAppOptions = {}): Promise<DastanServices> {
 	const services = createDastanApp(options);
-	return registerCloudAdapters(services, {
+	const withCloud = await registerCloudAdapters(services, {
 		cloudUrl: options.cloudUrl ?? import.meta.env.VITE_DASTAN_CLOUD_URL ?? '',
 		supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? '',
 		supabasePublishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? '',
 	});
+
+	return {
+		...withCloud,
+		entitlements: wrapDevEntitlements(withCloud.entitlements),
+	};
 }
 
 export const defaultDastanApp = createDastanApp({

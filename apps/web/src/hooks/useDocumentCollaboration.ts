@@ -36,10 +36,10 @@ export function useDocumentCollaboration(
 
 	useEffect(() => {
 		if (!collaborationActive) {
-			setExtensions(baseExtensions);
-			setBundle(null);
-			setPeers([]);
-			setIsReady(true);
+			setExtensions((current) => (current === baseExtensions ? current : baseExtensions));
+			setBundle((current) => (current === null ? current : null));
+			setPeers((current) => (current.length === 0 ? current : []));
+			setIsReady((current) => (current ? current : true));
 			return;
 		}
 

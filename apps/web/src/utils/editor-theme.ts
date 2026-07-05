@@ -42,5 +42,13 @@ export function getEditorTheme(isDark: boolean) {
 			: 'grid w-full grid-cols-[42px_minmax(0,1fr)] gap-2 rounded-lg border border-border bg-card px-2 py-2 text-left text-foreground hover:border-primary/40 hover:bg-accent',
 		docActive: isDark ? 'border-primary/60 bg-primary/10' : 'border-primary/50 bg-primary/10',
 		docIdle: isDark ? 'border-border bg-card hover:border-border/80' : 'border-border bg-card hover:border-border/80',
+		aiPanel: isDark
+			? 'border-border bg-card text-foreground'
+			: 'border-border bg-[#f8f5ef] text-foreground',
+		aiTabBar: chrome.tabBar,
+		aiTabActive: isDark ? 'bg-muted text-foreground' : 'bg-card text-foreground',
+		aiTabIdle: `${chrome.mutedText} hover:bg-accent/60 hover:text-foreground`,
+		aiIconBtn: `flex shrink-0 items-center justify-center rounded p-1 ${chrome.mutedText} transition hover:bg-accent hover:text-accent-foreground`,
+		aiInputShell: isDark ? 'border-t border-border bg-card' : 'border-t border-border bg-[#f8f5ef]',
 	};
 }

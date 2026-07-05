@@ -21,6 +21,7 @@ import { UserSettingsPanel } from './UserSettingsPanel';
 import type { SettingsTab, UserThemeSetting } from './UserSettingsPanel';
 import type { CollaboratorPresence } from '@dastan/plugin-api';
 import { CollaboratorAvatars } from './CollaboratorAvatars';
+import { LocalAccountBadge } from './settings/LocalAccountBadge';
 interface TopBarProps {
 	theme: UserThemeSetting;
 	resolvedTheme: 'light' | 'dark';
@@ -231,7 +232,7 @@ export function TopBar({
 				</div>
 
 				{!focusMode ? (
-					<div className="pointer-events-none absolute inset-x-0 hidden justify-center md:flex">
+					<div className="pointer-events-none absolute inset-x-0 flex justify-center max-md:hidden">
 						<div className="pointer-events-auto">
 							<EditorWorkspaceNav
 								workspaceMode={workspaceMode}
@@ -257,6 +258,7 @@ export function TopBar({
 					{scriptStatsLabel ? (
 						<span className="hidden text-xs tabular-nums text-muted-foreground md:inline">{scriptStatsLabel}</span>
 					) : null}
+					<LocalAccountBadge className="hidden sm:inline-flex" />
 					<div
 						aria-label={saveIndicatorLabel}
 						className="flex items-center gap-1.5 text-xs text-muted-foreground"

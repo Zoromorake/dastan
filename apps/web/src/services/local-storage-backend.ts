@@ -21,10 +21,12 @@ import {
 	restoreVersionSnapshot,
 	saveDocument,
 	saveVersionSnapshot,
+	saveVersion,
 	setLastDocumentId,
 	softDeleteDocument,
 	createManualVersionSnapshot,
 	updateProject,
+	saveProject,
 	duplicateDocument,
 	duplicateProject,
 	getTrashedProjects,
@@ -54,6 +56,7 @@ export const localStorageBackend: StorageBackend = {
 	projects: {
 		list: getAllProjects,
 		get: getProjectById,
+		save: saveProject,
 		create: createProject,
 		rename: renameProject,
 		update: updateProject,
@@ -65,6 +68,7 @@ export const localStorageBackend: StorageBackend = {
 	},
 	versions: {
 		saveSnapshot: saveVersionSnapshot,
+		save: saveVersion,
 		createManualSnapshot: createManualVersionSnapshot,
 		list: getVersionHistory,
 		restore: restoreVersionSnapshot,

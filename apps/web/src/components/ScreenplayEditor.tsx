@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, MessageSquare } from 'lucide-react';
 
-import type { Editor, Extensions } from '@tiptap/core';
+import type { Editor, Extensions, JSONContent } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import Bold from '@tiptap/extension-bold';
 import History from '@tiptap/extension-history';
@@ -42,7 +42,6 @@ import type {
 import { normalizeScriptNote, normalizeWorkspaceData } from '../types';
 import { computePageBreaks, groupBlocksByPage } from '../utils/page-breaks';
 import { formatPageAndRuntime } from '../utils/runtime-estimate';
-import { exportDocumentToPdf } from '../utils/pdf-export';
 import { recordWordCountDelta, startWritingSession } from '../utils/writing-stats';
 import { getSceneIndexForBlockIndex, moveSceneInContent, splitContentIntoSceneGroups } from '../utils/scene-reorder';
 import { normalizeDocumentLayout } from '../utils/screenplay-layout';
@@ -75,7 +74,6 @@ import {
 	getScreenplayBlocksFromContent,
 	isSupportedScreenplayImport,
 	parseImportedScreenplayFile,
-	parseImportedScreenplayPdfFile,
 	toFountainScreenplay,
 	toFinalDraftScreenplay,
 	toPlainTextScreenplay,
@@ -87,7 +85,7 @@ import type { SmartTypeBlockType, SmartTypeSuggestionItem } from '../utils/smart
 import { EditorFloatingToolbar } from './EditorFloatingToolbar';
 import { ElementPicker } from './ElementPicker';
 import { FindReplacePanel } from './FindReplacePanel';
-import { SceneNavigator } from './SceneNavigator';
+import { EditorNavigator, type EditorNavigatorSection } from './EditorNavigator';
 import { ScriptActionsMenu } from './ScriptActionsMenu';
 import { ScriptNoteDialog } from './ScriptNoteDialog';
 import { getEditorTheme } from '../utils/editor-theme';
@@ -100,8 +98,9 @@ import { TopBar } from './TopBar';
 import type { SettingsTab, UserThemeSetting } from './UserSettingsPanel';
 import { VersionHistoryDialog } from './VersionHistoryDialog';
 import { WriterInspector } from './WriterInspector';
-import { AiChatPanel } from './ai/AiChatPanel';
 import { ErrorBoundary } from './ErrorBoundary';
+
+const AiChatPanel = lazy(() => import('./ai/AiChatPanel').then((module) => ({ default: module.AiChatPanel })));
 
 const screenplayExtensions: Extensions = [
 	ScreenplayDocument,
@@ -153,8 +152,17 @@ interface ScreenplayEditorProps {
 
 export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme, onThemeChange }: ScreenplayEditorProps) {
 	const persistence = useScreenplayPersistence(documentId);
+	const {
+		isLoaded: persistenceLoaded,
+		handleUpdate: persistenceHandleUpdate,
+		handleKeyDown: persistenceHandleKeyDown,
+		registerEditor: registerPersistenceEditor,
+		forceSave: persistenceForceSave,
+		queueSave: persistenceQueueSave,
+	} = persistence;
 	const documentCollaboration = useDocumentCollaboration(documentId, screenplayExtensions);
 	const editorRef = useRef<Editor | null>(null);
+	const preInsertSnapshotRef = useRef<JSONContent | null>(null);
 	const sceneResetTimerRef = useRef<number | null>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const hasRestoredScrollRef = useRef(false);
@@ -164,7 +172,11 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	const [developSubTab, setDevelopSubTab] = useState<DevelopSubTab>('basics');
 	const [worldSubTab, setWorldSubTab] = useState<WorldSubTab>('characters');
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => prefersCollapsedSidebars());
-	const [sidebarMode, setSidebarMode] = useState<'scenes' | 'versions'>('scenes');
+	const [navigatorFocus, setNavigatorFocus] = useState<EditorNavigatorSection | null>(null);
+
+	useEffect(() => {
+		setNavigatorFocus(null);
+	}, [workspaceMode, developSubTab, worldSubTab]);
 	const [currentBlockType, setCurrentBlockType] = useState<ScreenplayBlockType | null>(null);
 	const [editorHasFocus, setEditorHasFocus] = useState(false);
 	const [inspectorCollapsed, setInspectorCollapsed] = useState(true);
@@ -293,13 +305,13 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 					},
 				},
 			});
-			void persistence.queueSave();
+			void persistenceQueueSave();
 		})();
 
 		return () => {
 			cancelled = true;
 		};
-	}, [currentDocument?.id, currentDocument?.projectId, documentWorkspace.development, persistence, setDocumentWorkspace]);
+	}, [currentDocument?.id, currentDocument?.projectId, documentWorkspace.development, persistenceQueueSave, setDocumentWorkspace]);
 
 	useEffect(() => {
 		const container = scrollContainerRef.current;
@@ -384,9 +396,9 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				return true;
 			}
 
-			return persistence.handleKeyDown(view, event);
+			return persistenceHandleKeyDown(view, event);
 		},
-		[persistence],
+		[persistenceHandleKeyDown],
 	);
 
 	const editor = useEditor(
@@ -407,7 +419,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 						editorRef.current = createdEditor;
 					},
 					onUpdate: ({ editor: updatedEditor }) => {
-						persistence.handleUpdate();
+						persistenceHandleUpdate();
 						updateEditorOverlayState(updatedEditor);
 						syncScriptNoteMarkers(updatedEditor);
 						requestAnimationFrame(() => {
@@ -436,20 +448,24 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 					},
 				}
 			: undefined,
-		[documentCollaboration.extensions, documentCollaboration.isReady, handleEditorKeyDown, persistence, syncScriptNoteMarkers, updateEditorOverlayState],
+		[documentCollaboration.extensions, documentCollaboration.isReady, handleEditorKeyDown, syncScriptNoteMarkers, updateEditorOverlayState],
 	);
 
 	useEffect(() => {
-		persistence.registerEditor(editor);
+		registerPersistenceEditor(editor);
 		return () => {
-			persistence.registerEditor(null);
+			registerPersistenceEditor(null);
 		};
-	}, [editor, persistence]);
+	}, [editor, registerPersistenceEditor]);
 
 	const editorCommands = useMemo<EditorCommands | null>(() => {
 		if (!editor) {
 			return null;
 		}
+
+		const captureUndoSnapshot = () => {
+			preInsertSnapshotRef.current = editor.getJSON();
+		};
 
 		const insertScreenplayBlocks = (text: string) => {
 			const parsed = parseScreenplayInsertText(text);
@@ -459,7 +475,9 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				return;
 			}
 
+			captureUndoSnapshot();
 			editor.chain().focus().insertContent(blocks).run();
+			persistenceQueueSave();
 		};
 
 		const insertAtCursor = (text: string) => {
@@ -473,6 +491,8 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				return;
 			}
 
+			captureUndoSnapshot();
+
 			const isEmpty = editor.state.selection.$from.parent.textContent.trim().length === 0;
 
 			if (isEmpty) {
@@ -481,10 +501,12 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				}
 
 				replaceCurrentBlockText(editor, content);
+				persistenceQueueSave();
 				return;
 			}
 
 			editor.chain().focus().insertContent(content).run();
+			persistenceQueueSave();
 		};
 
 		return {
@@ -499,6 +521,8 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				}
 
 				if (from !== to) {
+					captureUndoSnapshot();
+
 					if (looksLikeScreenplayText(content)) {
 						editor.chain().focus().deleteSelection().run();
 						insertScreenplayBlocks(content);
@@ -506,6 +530,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 					}
 
 					editor.chain().focus().deleteSelection().insertContent(content).run();
+					persistenceQueueSave();
 					return;
 				}
 
@@ -516,8 +541,25 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				return editor.state.doc.textBetween(from, to, '\n');
 			},
 			getCursorBlockType: () => editor.state.selection.$from.parent.type.name,
+			getWorkspace: () => documentWorkspace,
+			updateWorkspace: (patch) => {
+				setDocumentWorkspace(patch);
+				void persistenceQueueSave();
+			},
+			undoLastInsert: () => {
+				const snapshot = preInsertSnapshotRef.current;
+
+				if (!snapshot) {
+					return false;
+				}
+
+				editor.commands.setContent(snapshot, true);
+				preInsertSnapshotRef.current = null;
+				persistenceQueueSave();
+				return true;
+			},
 		};
-	}, [editor]);
+	}, [editor, persistenceQueueSave, documentWorkspace, setDocumentWorkspace]);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -614,7 +656,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 
 		void (async () => {
 			if (currentDocument) {
-				await persistence.forceSave();
+				await persistenceForceSave();
 			}
 
 			const loadedDocument = await loadDocumentById(documentId);
@@ -627,9 +669,9 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			useScreenplayStore.getState().setCurrentDocument(loadedDocument);
 			await refreshDocumentList();
 			await setLastDocumentId(documentId);
-			setSidebarMode('scenes');
+			setWorkspaceMode('script');
 		})();
-	}, [currentDocument, documentId, isHydrated, onBackToHub, persistence, refreshDocumentList]);
+	}, [currentDocument, documentId, isHydrated, onBackToHub, persistenceForceSave, refreshDocumentList]);
 
 	useEffect(() => {
 		return () => {
@@ -679,8 +721,14 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			return undefined;
 		}
 
-		return formatPageAndRuntime(pagedPageCount);
-	}, [currentDocument, pagedPageCount]);
+		const base = formatPageAndRuntime(pagedPageCount);
+
+		if (documentLayout.pageViewMode === 'paged') {
+			return `${base} · approx. page preview`;
+		}
+
+		return base;
+	}, [currentDocument, documentLayout.pageViewMode, pagedPageCount]);
 
 	const smartTypeSource = useMemo(
 		() => ({
@@ -767,7 +815,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		setWorkspaceMode('script');
 		setDevelopSubTab('basics');
 		setWorldSubTab('characters');
-		setSidebarMode('scenes');
+		setWorkspaceMode('script');
 		setChatOpen(false);
 		setFindReplaceOpen(false);
 		setVersionHistoryOpen(false);
@@ -776,9 +824,15 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	}, [documentId]);
 
 	const workspacePanelTab = workspaceMode === 'develop' ? developSubTab : worldSubTab;
+	const activeWorkspaceTabLabel =
+		workspaceMode === 'script'
+			? 'Script'
+			: workspaceMode === 'develop'
+				? `Develop / ${developSubTab}`
+				: `World / ${worldSubTab}`;
 
 	const isEditorReady =
-		persistence.isLoaded &&
+		persistenceLoaded &&
 		isHydrated &&
 		editor !== null &&
 		currentDocument !== null &&
@@ -1005,25 +1059,29 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	const handleTitleChange = useCallback(
 		(nextTitle: string) => {
 			setDocumentTitle(nextTitle);
-			void persistence.queueSave();
+			void persistenceQueueSave();
 		},
-		[persistence, setDocumentTitle],
+		[persistenceQueueSave, setDocumentTitle],
 	);
 
 	const handleLayoutChange = useCallback(
 		(layout: Partial<ScreenplayDocumentLayout>) => {
 			setDocumentLayout(layout);
-			void persistence.queueSave();
+			void persistenceQueueSave();
 		},
-		[persistence, setDocumentLayout],
+		[persistenceQueueSave, setDocumentLayout],
 	);
+
+	const handleShowVersions = useCallback(() => {
+		setNavigatorFocus('versions');
+	}, []);
 
 	const handleWorkspaceChange = useCallback(
 		(workspace: Partial<ScreenplayWorkspaceData>) => {
 			setDocumentWorkspace(workspace);
-			void persistence.queueSave();
+			void persistenceQueueSave();
 		},
-		[persistence, setDocumentWorkspace],
+		[persistenceQueueSave, setDocumentWorkspace],
 	);
 
 	const handleElementBehaviorChange = useCallback(
@@ -1040,9 +1098,9 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 					},
 				},
 			});
-			void persistence.queueSave();
+			void persistenceQueueSave();
 		},
-		[documentLayout.elementSettings, persistence, setDocumentLayout],
+		[documentLayout.elementSettings, persistenceQueueSave, setDocumentLayout],
 	);
 
 	const handleElementTypographyChange = useCallback(
@@ -1059,9 +1117,9 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 					},
 				},
 			});
-			void persistence.queueSave();
+			void persistenceQueueSave();
 		},
-		[documentLayout.elementSettings, persistence, setDocumentLayout],
+		[documentLayout.elementSettings, persistenceQueueSave, setDocumentLayout],
 	);
 
 	const handleExport = useCallback(
@@ -1071,12 +1129,14 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			}
 
 			if (format === 'pdf') {
-				try {
-					exportDocumentToPdf(currentDocument);
-				} catch (error) {
-					const message = error instanceof Error ? error.message : 'Could not export PDF.';
-					window.alert(message);
-				}
+				void import('../utils/pdf-export')
+					.then(({ exportDocumentToPdf }) => {
+						exportDocumentToPdf(currentDocument);
+					})
+					.catch((error) => {
+						const message = error instanceof Error ? error.message : 'Could not export PDF.';
+						window.alert(message);
+					});
 				return;
 			}
 
@@ -1119,6 +1179,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			try {
 				if (extension === 'pdf') {
 					const sourceBuffer = await file.arrayBuffer();
+					const { parseImportedScreenplayPdfFile } = await import('../utils/screenplay-text');
 					parsedContent = await parseImportedScreenplayPdfFile(sourceBuffer);
 				} else {
 					const sourceText = await file.text();
@@ -1130,7 +1191,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				return;
 			}
 
-			await persistence.forceSave();
+			await persistenceForceSave();
 
 			const createdDocument = await createDocument(baseTitle);
 			const importedDocument = {
@@ -1143,35 +1204,35 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			await saveDocument(importedDocument);
 			setCurrentDocument(importedDocument);
 			await refreshDocumentList();
-			setSidebarMode('scenes');
+			setWorkspaceMode('script');
 			editor?.chain().focus('end').run();
 		},
-		[editor, persistence, refreshDocumentList, setCurrentDocument],
+		[editor, persistenceForceSave, refreshDocumentList, setCurrentDocument],
 	);
 
 	const handleDocumentCreate = useCallback(async () => {
-		await persistence.forceSave();
+		await persistenceForceSave();
 		const createdDocument = await createDocument('Untitled');
 		const documents = await refreshDocumentList();
 		setCurrentDocument(createdDocument);
-		setSidebarMode('scenes');
+		setWorkspaceMode('script');
 
 		if (!documents.some((document) => document.id === createdDocument.id)) {
 			setDocumentList([createdDocument, ...documents]);
 		}
 
 		editor?.chain().focus('end').run();
-	}, [editor, persistence, refreshDocumentList, setCurrentDocument, setDocumentList]);
+	}, [editor, persistenceForceSave, refreshDocumentList, setCurrentDocument, setDocumentList]);
 
 	const handleDocumentSelect = useCallback(
 		async (id: string) => {
 			if (currentDocument?.id === id) {
-				setSidebarMode('scenes');
+				setWorkspaceMode('script');
 				editor?.chain().focus('end').run();
 				return;
 			}
 
-			await persistence.forceSave();
+			await persistenceForceSave();
 			const documents = await refreshDocumentList();
 
 			if (!documents.some((document) => document.id === id)) {
@@ -1180,10 +1241,10 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 
 			switchDocument(id);
 			await setLastDocumentId(id);
-			setSidebarMode('scenes');
+			setWorkspaceMode('script');
 			editor?.chain().focus('end').run();
 		},
-		[currentDocument?.id, editor, persistence, refreshDocumentList, switchDocument],
+		[currentDocument?.id, editor, persistenceForceSave, refreshDocumentList, switchDocument],
 	);
 
 	const handleDocumentDelete = useCallback(
@@ -1259,9 +1320,9 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 
 			editor.commands.setContent(nextContent, false);
 			setDocumentContent(nextContent);
-			void persistence.queueSave();
+			void persistenceQueueSave();
 		},
-		[currentDocument, editor, persistence, setDocumentContent],
+		[currentDocument, editor, persistenceQueueSave, setDocumentContent],
 	);
 
 	const setScriptBlockType = useCallback(
@@ -1527,7 +1588,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		</div>
 	);
 
-	if (!persistence.isLoaded || !isHydrated || !documentCollaboration.isReady || editor === null) {
+	if (!persistenceLoaded || !isHydrated || !documentCollaboration.isReady || editor === null) {
 		const loadingTitle =
 			currentDocument?.id === documentId && currentDocument.title.trim().length > 0
 				? currentDocument.title.trim()
@@ -1626,7 +1687,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			) : null}
 
 			{!focusMode && workspaceMode !== 'script' ? (
-				<div className={`relative flex h-10 shrink-0 items-center justify-center border-b px-4 ${editorTheme.tabBar}`}>
+				<div className={`relative flex h-10 shrink-0 items-center border-b px-4 ${editorTheme.tabBar}`}>
 					<EditorWorkspaceSubNav
 						activeDevelopSubTab={developSubTab}
 						activeWorldSubTab={worldSubTab}
@@ -1695,15 +1756,21 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				</div>
 			) : null}
 			<div className="relative z-0 flex min-h-0 flex-1 overflow-hidden">
-				{!focusMode && workspaceMode === 'script' ? (
-					<SceneNavigator
+				{!focusMode ? (
+					<EditorNavigator
 						collapsed={sidebarCollapsed}
-						mode={sidebarMode}
+						workspaceMode={workspaceMode}
+						developSubTab={developSubTab}
+						worldSubTab={worldSubTab}
+						navigatorFocus={navigatorFocus}
 						scenes={sceneHeadings}
+						activeSceneIndex={currentSceneIndex}
 						documentId={currentDocument.id}
+						documentTitle={currentDocument.title}
+						workspace={documentWorkspace}
 						resolvedTheme={resolvedTheme}
-						onModeChange={setSidebarMode}
 						onToggleCollapsed={() => setSidebarCollapsed((currentValue) => !currentValue)}
+						onShowVersions={handleShowVersions}
 						onSceneSelect={scrollToScene}
 						onOpenVersionHistory={() => setVersionHistoryOpen(true)}
 						onRestoreVersion={(versionId) => {
@@ -1732,7 +1799,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 									</div>
 								</div>
 							) : (
-								<div className="mx-auto w-full max-w-5xl px-2 py-6 sm:py-8">
+								<div key={workspacePanelTab} className="workspace-panel-enter mx-auto w-full max-w-5xl px-2 py-6 sm:py-8">
 									<ScreenplayWorkspacePanel
 										activeTab={workspacePanelTab}
 										documentTitle={currentDocument.title}
@@ -1775,7 +1842,8 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 
 				{!focusMode ? (
 					<ErrorBoundary label="ai-chat" fallback={null}>
-						<AiChatPanel
+						<Suspense fallback={null}>
+							<AiChatPanel
 							open={chatOpen}
 							variant="editor"
 							selectionText={chatSelectionText}
@@ -1796,7 +1864,9 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 							}}
 							collaborationRoomId={documentCollaboration.roomId}
 							activeCollaborators={documentCollaboration.peers}
+							activeWorkspaceTab={activeWorkspaceTabLabel}
 						/>
+						</Suspense>
 					</ErrorBoundary>
 				) : null}
 			</div>

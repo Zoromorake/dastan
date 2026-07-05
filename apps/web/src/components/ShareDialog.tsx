@@ -13,6 +13,7 @@ interface ShareDialogProps {
   open: boolean;
   title: string;
   documentId?: string;
+  projectId?: string;
   isDark?: boolean;
   onClose: () => void;
   onOpenAddressBook?: () => void;
@@ -25,7 +26,7 @@ const PERMISSION_OPTIONS: Array<{ value: SharePermission; label: string; descrip
   { value: 'edit', label: 'Can edit', description: 'Full editing access' },
 ];
 
-export function ShareDialog({ open, title, documentId, isDark = false, onClose, onOpenAddressBook, onShared }: ShareDialogProps) {
+export function ShareDialog({ open, title, documentId, projectId, isDark = false, onClose, onOpenAddressBook, onShared }: ShareDialogProps) {
   const { share, entitlements } = useDastanApp();
   const cloudSharingAvailable = entitlements.canUseCloudSync();
   const isFolderShare = !documentId;
@@ -46,7 +47,9 @@ export function ShareDialog({ open, title, documentId, isDark = false, onClose, 
         title: title.trim() || 'Untitled Script',
         permission: cloudSharingAvailable ? permission : 'comment',
       }).link
-    : '';
+    : projectId
+      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/project/${projectId}`
+      : '';
 
   useEffect(() => {
     if (!open) {
@@ -201,13 +204,18 @@ export function ShareDialog({ open, title, documentId, isDark = false, onClose, 
                       type="button"
                       variant="outline"
                       onClick={() => {
-                        if (!documentId) {
+                        if (documentId) {
+                          void share.copyLink(documentId).then((copied) => {
+                            setLinkCopied(copied);
+                          });
                           return;
                         }
 
-                        void share.copyLink(documentId).then((copied) => {
-                          setLinkCopied(copied);
-                        });
+                        if (shareLink) {
+                          void navigator.clipboard.writeText(shareLink).then(() => {
+                            setLinkCopied(true);
+                          });
+                        }
                       }}
                     >
                       <Copy size={14} />
@@ -219,7 +227,7 @@ export function ShareDialog({ open, title, documentId, isDark = false, onClose, 
 
               {isFolderShare ? (
                 <p className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-                  Folder invites will include all scripts inside. Pick contacts now — sending activates when cloud sharing ships.
+                  Share this project link so collaborators can open the folder. Script-level cloud invites still require backing up each script.
                 </p>
               ) : null}
 
@@ -312,8 +320,26 @@ export function ShareDialog({ open, title, documentId, isDark = false, onClose, 
               </Button>
               <Button
                 type="button"
-                disabled={selectedContacts.length === 0 || isFolderShare}
+                disabled={selectedContacts.length === 0}
                 onClick={() => {
+                  if (isFolderShare) {
+                    const names = selectedContacts.map((contact) => contact.name).join(', ');
+                    const inviteText = [
+                      `You're invited to collaborate on "${title.trim() || 'Untitled Project'}" on Dastan.`,
+                      note.trim() ? `Note: ${note.trim()}` : '',
+                      `Open: ${shareLink}`,
+                      names ? `For: ${names}` : '',
+                    ]
+                      .filter(Boolean)
+                      .join('\n');
+
+                    void navigator.clipboard.writeText(inviteText).then(() => {
+                      setStatusMessage('Project invite copied to clipboard.');
+                      onShared?.();
+                    });
+                    return;
+                  }
+
                   if (!documentId) {
                     return;
                   }

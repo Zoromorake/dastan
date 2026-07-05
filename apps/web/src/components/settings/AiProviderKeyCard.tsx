@@ -115,10 +115,12 @@ export function AiProviderKeyCard({
 					) : null}
 				</div>
 				{isConnected && !editing ? (
-					<CardDescription className={isDark ? 'text-slate-400' : undefined}>{maskApiKey(savedKey)}</CardDescription>
+					<CardDescription className={isDark ? 'text-slate-400' : undefined}>
+						{maskApiKey(savedKey)} — stored only in this browser&apos;s local storage and sent directly to your provider.
+					</CardDescription>
 				) : (
 					<CardDescription className={isDark ? 'text-slate-400' : undefined}>
-						Paste your {AI_PROVIDER_LABELS[provider]} API key. Stored only in this browser&apos;s local storage — never sent to Dastan servers.
+						Paste your {AI_PROVIDER_LABELS[provider]} API key. Stored only in this browser&apos;s local storage and sent directly to your provider — never to Dastan servers.
 					</CardDescription>
 				)}
 			</CardHeader>

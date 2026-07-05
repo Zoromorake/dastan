@@ -1,5 +1,21 @@
 @import "tw-animate-css";
 @import "@fontsource-variable/geist";
+@keyframes workspace-panel-in {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.workspace-panel-enter {
+	animation: workspace-panel-in 0.2s ease-out;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -14,6 +14,8 @@ import { ImageCropDialog } from './ImageCropDialog';
 import { readFileAsDataUrl } from '../utils/image-crop';
 import { AddressBookPanel } from './AddressBookPanel';
 import { CloudAccountSection } from './settings/CloudAccountSection';
+import { isDevEditorAiEnabled } from '../utils/dev-editor-ai';
+import { LocalOnlyModal } from './settings/LocalOnlyModal';
 import {
 	AI_KEY_PROVIDERS,
 	AiProviderKeyCard,
@@ -28,6 +30,7 @@ import {
 	type UserThemeSetting,
 	userSettingsStorageKey,
 } from '../utils/user-settings';
+import { hasAcknowledgedLocalOnlyMode } from '../utils/local-identity';
 import { useDastanApp } from '../context/DastanAppProvider';
 
 export type { SettingsTab, UserThemeSetting };
@@ -88,11 +91,11 @@ function BinaryChoice({
 }
 
 export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose, initialTab }: UserSettingsPanelProps) {
-	const cloudEnabled = Boolean(import.meta.env.VITE_DASTAN_CLOUD_URL?.trim());
-	const { entitlements, aiProviders } = useDastanApp();
+	const { entitlements } = useDastanApp();
 	const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'profile');
 	const [settings, setSettings] = useState<UserSettingsState>(() => loadUserSettings());
 	const [aiSettings, setAiSettings] = useState<AiSettings>(() => loadAiSettings());
+	const [showLocalOnlyModal, setShowLocalOnlyModal] = useState(() => !hasAcknowledgedLocalOnlyMode());
 	const [verifyStatus, setVerifyStatus] = useState<{ provider: AiProvider | null; message: string | null }>({
 		provider: null,
 		message: null,
@@ -130,7 +133,6 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 	}, [initialTab]);
 
 	const activeTabLabel = settingsTabs.find((tab) => tab.key === activeTab)?.label ?? 'Settings';
-	const creditsRemaining = entitlements.dailyAiPromptsRemaining();
 	const planLabel = entitlements.plan();
 
 	const handleVerify = async (provider: AiProvider) => {
@@ -244,7 +246,7 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 								/>
 							</SettingsField>
 
-							{cloudEnabled ? <CloudAccountSection theme={ui} /> : null}
+							<CloudAccountSection theme={ui} />
 						</div>
 					) : null}
 
@@ -334,14 +336,12 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 							<div className={`rounded-xl border px-4 py-3 text-sm ${isDark ? 'border-slate-700 bg-slate-800/40 text-slate-300' : 'border-stone-200 bg-stone-50 text-stone-700'}`}>
 								<p className="font-medium">Plan: {planLabel}</p>
 								<p className={`mt-1 text-xs ${ui.muted}`}>
-									{aiProviders.get('dastan-cloud')
-										? creditsRemaining === 'unlimited'
-											? 'Unlimited Dastan AI prompts included.'
-											: `${creditsRemaining} Dastan AI prompts left today.`
-										: 'Bring your own API keys below to use AI at your cost.'}{' '}
-									{aiProviders.get('dastan-cloud')
-										? 'You can also connect API keys to use your own providers.'
-										: 'Pick models in chat after saving a key.'}
+									Bring your own API keys below to use AI at your cost.{' '}
+									{entitlements.canUseEditorAi()
+										? isDevEditorAiEnabled()
+											? 'Editor AI (agentic editing) is enabled in this dev build.'
+											: 'Editor AI (agentic editing) is enabled for your account.'
+										: 'Ask and Planner AI are available to everyone. Editor AI is invite-only.'}
 								</p>
 							</div>
 
@@ -478,6 +478,10 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 					}));
 					setCropImageSrc(null);
 				}}
+			/>
+			<LocalOnlyModal
+				open={showLocalOnlyModal}
+				onClose={() => setShowLocalOnlyModal(false)}
 			/>
 		</section>
 	);

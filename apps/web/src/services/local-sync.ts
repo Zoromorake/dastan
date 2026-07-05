@@ -9,7 +9,10 @@ const localSyncStatus: SyncStatus = {
 export const localSyncService: SyncService = {
 	status: () => localSyncStatus,
 	async syncNow() {
-		throw new Error('Cloud sync is not available yet. Your scripts are stored locally.');
+		throw new Error('Cloud sync is not configured in this build. Set cloud environment variables to enable backup and restore.');
+	},
+	async pullNow() {
+		throw new Error('Cloud restore is not configured in this build. Set cloud environment variables to enable backup and restore.');
 	},
 	onStatusChange() {
 		return () => {};

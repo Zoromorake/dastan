@@ -27,6 +27,7 @@ export interface DocumentRepository {
 export interface ProjectRepository {
 	list(): Promise<ScreenplayProjectRecord[]>;
 	get(id: string): Promise<ScreenplayProjectRecord | null>;
+	save(project: ScreenplayProjectRecord): Promise<void>;
 	create(title: string): Promise<ScreenplayProjectRecord>;
 	rename(id: string, title: string): Promise<ScreenplayProjectRecord | null>;
 	update(
@@ -42,6 +43,7 @@ export interface ProjectRepository {
 
 export interface VersionRepository {
 	saveSnapshot(document: ScreenplayDocumentRecord): Promise<void>;
+	save(version: ScreenplayVersionSnapshot): Promise<void>;
 	createManualSnapshot(document: ScreenplayDocumentRecord, label: string): Promise<ScreenplayVersionSnapshot>;
 	list(documentId: string): Promise<ScreenplayVersionSnapshot[]>;
 	restore(versionId: string): Promise<ScreenplayDocumentRecord | null>;

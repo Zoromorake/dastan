@@ -459,6 +459,7 @@ export function MainHubDashboard({
       <ShareDialog
         open={projectShareOpen && shareProject !== null}
         title={shareProject?.title || 'Untitled Project'}
+        projectId={shareProject?.id}
         isDark={isDark}
         onClose={() => {
           setProjectShareOpen(false);

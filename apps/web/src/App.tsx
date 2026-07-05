@@ -1,11 +1,13 @@
-import { lazy, Suspense, useCallback, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
+import { LocalOnlyModal } from './components/settings/LocalOnlyModal';
 import { DastanAppProvider, useDastanApp } from './context/DastanAppProvider';
 import { ThemeProvider, useTheme } from './context/ThemeProvider';
 import { useScreenplayStore } from './store';
 import { getHubPathForDocument } from './utils/navigation';
+import { hasAcknowledgedLocalOnlyMode } from './utils/local-identity';
 import { endWritingSession } from './utils/writing-stats';
 
 const MainHubDashboard = lazy(() =>
@@ -100,19 +102,28 @@ function EditorPage() {
 	);
 }
 
+function AppShell() {
+	const [showLocalOnlyModal, setShowLocalOnlyModal] = useState(() => !hasAcknowledgedLocalOnlyMode());
+
+	return (
+		<BrowserRouter>
+			<Routes>
+				<Route path="/" element={<HubPage />} />
+				<Route path="/project/:projectId" element={<HubPage />} />
+				<Route path="/script/:documentId" element={<EditorPage />} />
+				<Route path="*" element={<Navigate to="/" replace />} />
+			</Routes>
+			<PwaInstallPrompt />
+			<LocalOnlyModal open={showLocalOnlyModal} onClose={() => setShowLocalOnlyModal(false)} />
+		</BrowserRouter>
+	);
+}
+
 export default function App() {
 	return (
 		<DastanAppProvider>
 			<ThemeProvider>
-				<BrowserRouter>
-					<Routes>
-						<Route path="/" element={<HubPage />} />
-						<Route path="/project/:projectId" element={<HubPage />} />
-						<Route path="/script/:documentId" element={<EditorPage />} />
-						<Route path="*" element={<Navigate to="/" replace />} />
-					</Routes>
-					<PwaInstallPrompt />
-				</BrowserRouter>
+				<AppShell />
 			</ThemeProvider>
 		</DastanAppProvider>
 	);

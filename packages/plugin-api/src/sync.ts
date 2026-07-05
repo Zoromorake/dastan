@@ -4,8 +4,14 @@ export interface SyncStatus {
 	pendingChanges: number;
 }
 
+export interface SyncResult {
+	pushed: number;
+	pulled: number;
+}
+
 export interface SyncService {
 	status(): SyncStatus;
-	syncNow(): Promise<void>;
+	syncNow(): Promise<SyncResult>;
+	pullNow(): Promise<SyncResult>;
 	onStatusChange(callback: (status: SyncStatus) => void): () => void;
 }
