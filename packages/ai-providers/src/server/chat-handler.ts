@@ -83,8 +83,11 @@ export async function handleChatRequest(request: Request): Promise<Response> {
 	const enableTools = body.enableTools === true;
 	const authHeader = request.headers.get('authorization')?.trim();
 	const devEditorTools = request.headers.get('x-dastan-dev-editor') === '1';
+	const hasByokKey = Boolean(apiKey) || provider === 'ollama';
 
-	if (enableTools && !authHeader && !devEditorTools) {
+	// DECISION: Re-introduce server-side auth gating for editor tools when the managed
+	// dastan-cloud provider ships via ai-gateway; BYOK users run tools locally today.
+	if (enableTools && !authHeader && !hasByokKey && !devEditorTools) {
 		return new Response('Editor AI requires a signed-in account with editor access.', { status: 403 });
 	}
 

@@ -234,7 +234,7 @@ export function AiChatInput({
 		...(canUseEditorAi ? [{ id: 'editor' as const, label: 'Editor' }] : []),
 	];
 
-	const scriptChipActive = includeScriptContext && !selectionActive;
+	const scriptChipActive = includeScriptContext;
 	const scriptOverLimit = scriptCharCount > 20_000;
 
 	const placeholder =

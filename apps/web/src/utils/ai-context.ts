@@ -21,6 +21,7 @@ export interface AiContextInput {
 	includeScriptContext: boolean;
 	includeWorkspaceContext: boolean;
 	selectionText?: string | null;
+	activeBlockIndex?: number | null;
 	interactionMode?: AiInteractionMode;
 	activeWorkspaceTab?: string | null;
 	activeCollaborators?: CollaboratorPresence[];
@@ -174,8 +175,13 @@ export function buildAiContext(input: AiContextInput): AiContextPayload {
 		sections.push(`Current selection (user highlighted this text):\n${selection.slice(0, 4000)}`);
 	}
 
-	if (input.includeScriptContext && !selection && input.documentContent) {
-		const scriptText = buildSmartScriptContext(input.documentContent, input.workspace, MAX_SCRIPT_CHARS);
+	if (input.includeScriptContext && input.documentContent) {
+		const scriptText = buildSmartScriptContext(
+			input.documentContent,
+			input.workspace,
+			MAX_SCRIPT_CHARS,
+			input.activeBlockIndex ?? null,
+		);
 
 		if (scriptText.trim()) {
 			sections.push(`Current screenplay:\n${scriptText}`);

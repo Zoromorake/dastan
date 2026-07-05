@@ -104,6 +104,7 @@ interface AiChatPanelProps {
 	onClose: () => void;
 	onOpenSettings?: () => void;
 	selectionText?: string;
+	activeBlockIndex?: number | null;
 	scriptContext?: {
 		documentId: string;
 		projectId?: string;
@@ -128,6 +129,7 @@ export function AiChatPanel({
 	onClose,
 	onOpenSettings,
 	selectionText,
+	activeBlockIndex = null,
 	scriptContext,
 	libraryDocuments = [],
 	selectedScriptId = null,
@@ -304,6 +306,7 @@ export function AiChatPanel({
 		activeCollaborators,
 		panelOpen: open,
 		selectionText: effectiveSelectionText ?? null,
+		activeBlockIndex,
 		activeWorkspaceTab,
 		onToolInvocations: (invocations) => {
 			if (invocations.length === 0) {
@@ -848,7 +851,7 @@ export function AiChatPanel({
 					status={chat.status}
 					canSend={chat.canSend}
 					hasProviderConfigured={chat.hasProviderConfigured}
-					canUseEditorAi={entitlements.canUseEditorAi()}
+					canUseEditorAi={entitlements.canUseEditorAi() || chat.hasProviderConfigured}
 					usingCredits={chat.usingCredits}
 					creditsRemaining={chat.creditsRemaining}
 					includeScriptContext={chat.effectiveIncludeScriptContext}

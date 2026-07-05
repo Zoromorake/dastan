@@ -141,7 +141,11 @@ Deno.serve(async (request) => {
 		});
 	}
 
-	if (enableTools && !authHeader) {
+	const hasByokKey = Boolean(apiKey) || provider === 'ollama';
+
+	// DECISION: Re-introduce server-side auth gating for editor tools when the managed
+	// dastan-cloud provider ships via ai-gateway; BYOK users run tools locally today.
+	if (enableTools && !authHeader && !hasByokKey) {
 		return new Response('Editor AI requires a signed-in account with editor access.', {
 			status: 403,
 			headers: corsHeaders,

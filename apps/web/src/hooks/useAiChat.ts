@@ -87,6 +87,7 @@ interface UseAiChatOptions {
 	activeCollaborators?: CollaboratorPresence[];
 	panelOpen?: boolean;
 	selectionText?: string | null;
+	activeBlockIndex?: number | null;
 	activeWorkspaceTab?: string | null;
 	onToolInvocations?: (invocations: Array<{ toolName: string; input: unknown }>) => void;
 	onThreadChange: (thread: AiChatThread) => void;
@@ -109,6 +110,7 @@ export function useAiChat({
 	activeCollaborators = [],
 	panelOpen = true,
 	selectionText = null,
+	activeBlockIndex = null,
 	activeWorkspaceTab = null,
 	onToolInvocations,
 	onThreadChange,
@@ -200,12 +202,6 @@ export function useAiChat({
 		[memoryDocumentId, memorySuggestions, projectId, reloadMemories],
 	);
 
-	useEffect(() => {
-		if (selectionActive && contextMode === 'script') {
-			setIncludeScriptContextState(false);
-		}
-	}, [contextMode, selectionActive, activeSelectionText]);
-
 	const setIncludeScriptContext = useCallback((value: boolean) => {
 		setIncludeScriptContextState(value);
 		const nextSettings = { ...loadAiSettings(), includeScriptContext: value };
@@ -252,6 +248,7 @@ export function useAiChat({
 			includeScriptContext,
 			includeWorkspaceContext,
 			selectionText: activeSelectionText,
+			activeBlockIndex,
 			interactionMode,
 			activeWorkspaceTab,
 			activeCollaborators,
@@ -269,6 +266,7 @@ export function useAiChat({
 		includeScriptContext,
 		includeWorkspaceContext,
 		activeSelectionText,
+		activeBlockIndex,
 		activeWorkspaceTab,
 		activeCollaborators,
 		libraryDocuments,
@@ -276,10 +274,10 @@ export function useAiChat({
 
 	const editorToolsEnabled =
 		interactionModeEnablesTools(interactionMode) &&
-		entitlements.canUseEditorAi() &&
-		(auth.isSignedIn() || isDevEditorAiEnabled());
+		(hasAnyProviderConfigured(settings) ||
+			(entitlements.canUseEditorAi() && (auth.isSignedIn() || isDevEditorAiEnabled())));
 
-	const effectiveIncludeScriptContext = includeScriptContext && !selectionActive;
+	const effectiveIncludeScriptContext = includeScriptContext;
 
 	const refreshSettings = useCallback(() => {
 		const loaded = loadAiSettings();

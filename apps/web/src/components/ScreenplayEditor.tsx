@@ -1847,6 +1847,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 							open={chatOpen}
 							variant="editor"
 							selectionText={chatSelectionText}
+							activeBlockIndex={currentBlockIndex}
 							pendingPrompt={pendingAiPrompt}
 							onPendingPromptHandled={() => setPendingAiPrompt(null)}
 							scriptContext={{

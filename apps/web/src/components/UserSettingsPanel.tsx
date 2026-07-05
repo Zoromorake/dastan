@@ -341,7 +341,7 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 										? isDevEditorAiEnabled()
 											? 'Editor AI (agentic editing) is enabled in this dev build.'
 											: 'Editor AI (agentic editing) is enabled for your account.'
-										: 'Ask and Planner AI are available to everyone. Editor AI is invite-only.'}
+										: 'Ask and Planner modes work for everyone. Editor AI (agentic script edits) is available with your own API key — no cloud account required.'}
 								</p>
 							</div>
 
