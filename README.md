@@ -100,6 +100,10 @@ Local dev uses `/api/chat` via the Vite plugin when `VITE_AI_CHAT_URL` is unset.
 
 ## Contributing
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the AGPL/cloud boundary, and PR requirements.
+
+Quick rules:
+
 1. Core packages under `packages/` are AGPL-3.0
 2. Do not import from proprietary `dastan-cloud` into public packages
 3. New cloud features implement `@dastan/plugin-api` interfaces

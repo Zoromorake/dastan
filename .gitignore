@@ -20,6 +20,10 @@ packages/*/dist/
 todo.txt
 black-panther-2018-2.pdf
 
+# Supabase CLI temp state
+supabase/.temp/
+cloud/supabase/.temp/
+
 # Proprietary cloud scaffold — lives in a separate private repo when implemented
 cloud/
 

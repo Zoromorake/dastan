@@ -25,7 +25,7 @@ describe('buildSmartScriptContext', () => {
 		const workspace = createDefaultWorkspaceData();
 		workspace.development.basics.logline = 'A test logline';
 
-		const text = buildSmartScriptContext(content, workspace);
+		const text = buildSmartScriptContext(content, workspace, 10_000);
 
 		expect(text).toContain('Scene outline');
 		expect(text).toContain('Script opening');

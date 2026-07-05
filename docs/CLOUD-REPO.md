@@ -78,7 +78,7 @@ When developing with the gitignored `cloud/` folder nested inside the public rep
 1. Set in `.env.local`:
    ```bash
    VITE_DASTAN_CLOUD_URL=http://localhost:5173
-   VITE_SUPABASE_URL=https://lbnkjcxtnguslqoacmua.supabase.co
+   VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
    VITE_SUPABASE_PUBLISHABLE_KEY=<your-anon-key>
    ```
 2. `@dastan/web` resolves `@dastan-cloud/bootstrap` via a Vite alias to `cloud/bootstrap/index.ts`.
