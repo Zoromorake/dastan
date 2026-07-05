@@ -32,3 +32,5 @@ cloud/
 
 # Test
 coverage/
+test-results/
+playwright-report/
