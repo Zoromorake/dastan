@@ -6,9 +6,15 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "test": "vitest run"
+  },
   "dependencies": {
     "@dastan/fountain-parser": "*",
     "@dastan/screenplay-model": "*",
     "@tiptap/core": "^2.11.7"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8"
   }
 }

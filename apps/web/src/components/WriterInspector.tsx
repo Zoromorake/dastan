@@ -703,11 +703,9 @@ export function WriterInspector({
 						</CollapsibleSection>
 
 						<CollapsibleSection isDark={isDark} title="Mores and Continueds">
-							<p className={`mb-3 rounded-lg border px-3 py-2 text-[11px] ${isDark ? 'border-amber-700/50 bg-amber-950/20 text-amber-100' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
-								<span className="mr-2 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">Coming soon</span>
-								(MORE) and (CONT&apos;D) settings apply in PDF export only today. Live page preview does not insert them yet — see future-tasks.md.
+							<p className={`mb-3 text-[11px] ${isDark ? 'text-slate-400' : 'text-stone-600'}`}>
+								(MORE) and (CONT&apos;D) settings apply in PDF/print export. Live page preview does not insert them yet — see future-tasks.md.
 							</p>
-							<fieldset disabled className="pointer-events-none opacity-50">
 							<p className={`mb-2 text-xs font-medium ${isDark ? 'text-slate-300' : 'text-stone-700'}`}>Dialogue Breaks</p>
 							<InspectorRow isDark={isDark} label="Bottom of Page">
 								<YesNoToggle
@@ -760,7 +758,6 @@ export function WriterInspector({
 									}
 								/>
 							</InspectorRow>
-							</fieldset>
 						</CollapsibleSection>
 
 						<CollapsibleSection isDark={isDark} defaultOpen={false} title="Document">
