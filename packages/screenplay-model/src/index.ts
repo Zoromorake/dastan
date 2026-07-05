@@ -24,7 +24,28 @@ export type ScreenplayElementAlignment = 'left' | 'center' | 'right';
 
 export type ScreenplayElementTextCase = 'mixed' | 'uppercase';
 
-export type ScreenplayRevisionColor = 'none' | 'blue' | 'pink' | 'green' | 'yellow';
+export type ScreenplayRevisionColor =
+	| 'none'
+	| 'white'
+	| 'blue'
+	| 'pink'
+	| 'yellow'
+	| 'green'
+	| 'goldenrod';
+
+export interface DocumentViewOptions {
+	showChangeMarks: boolean;
+	showCharacterHighlighting: boolean;
+	showStructureLines: boolean;
+}
+
+export interface RevisionSetRecord {
+	id: string;
+	label: string;
+	color: ScreenplayRevisionColor;
+	baselineVersionId: string;
+	createdAt: string;
+}
 
 export type ScreenplayPageViewMode = 'continuous' | 'paged';
 
@@ -214,6 +235,11 @@ export interface ScreenplayWorkspaceData {
 	characterProfiles: Record<string, CharacterProfile>;
 	locationProfiles: Record<string, LocationProfile>;
 	smartTypeExclusions?: SmartTypeExclusions;
+	viewOptions?: DocumentViewOptions;
+	characterHighlightColors?: Record<string, string>;
+	revisionSets?: RevisionSetRecord[];
+	activeRevisionSetId?: string | null;
+	sceneNumberLocks?: Record<number, string>;
 }
 
 export interface ScreenplayDocumentRecord {
@@ -292,6 +318,15 @@ export function createDefaultWorkspaceData(): ScreenplayWorkspaceData {
 		characterProfiles: {},
 		locationProfiles: {},
 		smartTypeExclusions: {},
+		viewOptions: {
+			showChangeMarks: true,
+			showCharacterHighlighting: false,
+			showStructureLines: false,
+		},
+		characterHighlightColors: {},
+		revisionSets: [],
+		activeRevisionSetId: null,
+		sceneNumberLocks: {},
 	};
 }
 
@@ -363,6 +398,19 @@ export function normalizeWorkspaceData(workspace: ScreenplayWorkspaceData | unde
 			...defaults.smartTypeExclusions,
 			...workspace?.smartTypeExclusions,
 		},
+		viewOptions: {
+			showChangeMarks: workspace?.viewOptions?.showChangeMarks ?? defaults.viewOptions!.showChangeMarks,
+			showCharacterHighlighting:
+				workspace?.viewOptions?.showCharacterHighlighting ?? defaults.viewOptions!.showCharacterHighlighting,
+			showStructureLines: workspace?.viewOptions?.showStructureLines ?? defaults.viewOptions!.showStructureLines,
+		},
+		characterHighlightColors: {
+			...defaults.characterHighlightColors,
+			...workspace?.characterHighlightColors,
+		},
+		revisionSets: workspace?.revisionSets ?? defaults.revisionSets,
+		activeRevisionSetId: workspace?.activeRevisionSetId ?? defaults.activeRevisionSetId,
+		sceneNumberLocks: { ...defaults.sceneNumberLocks, ...workspace?.sceneNumberLocks },
 	};
 }
 

@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
-import { History } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, History } from 'lucide-react';
+import type { JSONContent } from '@tiptap/core';
 import type {
 	ScreenplaySceneReference,
 	ScreenplayVersionSnapshot,
 	ScreenplayWorkspaceData,
 } from '../types';
 import type { DevelopSubTab, WorldSubTab, WorkspaceMode } from '../types/workspace-navigation';
+import { getCharactersForScene } from '../utils/scene-cast';
+import { getStructureLineColor } from '../utils/character-highlight';
 import { getEditorTheme } from '../utils/editor-theme';
 import { getVersionHistory } from '../utils/screenplay-storage';
 import {
@@ -41,6 +44,7 @@ interface EditorNavigatorProps {
 	activeSceneIndex?: number;
 	documentId: string;
 	documentTitle: string;
+	documentContent: JSONContent | null;
 	workspace: ScreenplayWorkspaceData;
 	resolvedTheme: 'light' | 'dark';
 	onToggleCollapsed: () => void;
@@ -152,6 +156,7 @@ export function EditorNavigator({
 	activeSceneIndex = -1,
 	documentId,
 	documentTitle,
+	documentContent,
 	workspace,
 	resolvedTheme,
 	onToggleCollapsed,
@@ -167,6 +172,24 @@ export function EditorNavigator({
 	const [versions, setVersions] = useState<ScreenplayVersionSnapshot[]>([]);
 	const [versionsLoading, setVersionsLoading] = useState(false);
 	const [pendingRestoreVersion, setPendingRestoreVersion] = useState<ScreenplayVersionSnapshot | null>(null);
+	const [expandedScenes, setExpandedScenes] = useState<Record<number, boolean>>({});
+	const showStructureLines = workspace.viewOptions?.showStructureLines ?? false;
+	const structureBeatBySceneIndex = useMemo(() => {
+		const map = new Map<number, { label: string; color: string }>();
+
+		for (const beat of workspace.development.structureBeats) {
+			if (typeof beat.linkedSceneIndex !== 'number') {
+				continue;
+			}
+
+			map.set(beat.linkedSceneIndex, {
+				label: beat.label,
+				color: getStructureLineColor(beat.order),
+			});
+		}
+
+		return map;
+	}, [workspace.development.structureBeats]);
 
 	useEffect(() => {
 		if (collapsed || activeSection !== 'versions') {
@@ -206,14 +229,17 @@ export function EditorNavigator({
 					<div className="divide-y divide-border/70">
 						{scenes.map((scene, index) => {
 							const isActive = index === activeSceneIndex;
+							const cast = getCharactersForScene(documentContent, index);
+							const expanded = expandedScenes[index] ?? false;
+							const structureBeat = structureBeatBySceneIndex.get(scene.index);
 
 							return (
+							<div key={`${scene.index}-${index}`} className={`${isActive ? theme.modeActive : ''}`}>
 							<button
-								key={`${scene.index}-${index}`}
 								aria-current={isActive ? 'true' : undefined}
 								className={`grid w-full grid-cols-[2.25rem_minmax(0,1fr)] gap-2 px-2 py-2.5 text-left transition ${
 									isActive
-										? `${theme.modeActive} font-semibold ring-1 ring-inset ring-primary/40`
+										? 'font-semibold ring-1 ring-inset ring-primary/40'
 										: 'hover:bg-accent/60'
 								}`}
 								type="button"
@@ -226,10 +252,36 @@ export function EditorNavigator({
 								>
 									{index + 1}
 								</span>
-								<span className={`min-w-0 truncate text-sm leading-snug ${isActive ? 'text-foreground' : ''}`}>
-									{scene.text.length > 0 ? scene.text : 'Untitled scene'}
+								<span className="min-w-0">
+									<span className={`flex items-center gap-1 truncate text-sm leading-snug ${isActive ? 'text-foreground' : ''}`}>
+										{showStructureLines && structureBeat ? (
+											<span
+												className="inline-block size-2 shrink-0 rounded-full"
+												style={{ backgroundColor: structureBeat.color }}
+												title={structureBeat.label}
+											/>
+										) : null}
+										{scene.text.length > 0 ? scene.text : 'Untitled scene'}
+									</span>
+									{cast.length > 0 ? (
+										<button
+											type="button"
+											className={`mt-1 flex items-center gap-1 text-[10px] ${theme.statusText}`}
+											onClick={(event) => {
+												event.stopPropagation();
+												setExpandedScenes((current) => ({ ...current, [index]: !expanded }));
+											}}
+										>
+											{expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+											{cast.length} character{cast.length === 1 ? '' : 's'}
+										</button>
+									) : null}
+									{expanded && cast.length > 0 ? (
+										<p className={`mt-1 text-[10px] leading-relaxed ${theme.statusText}`}>{cast.join(', ')}</p>
+									) : null}
 								</span>
 							</button>
+							</div>
 							);
 						})}
 					</div>

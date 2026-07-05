@@ -11,6 +11,11 @@ export interface WritingStatsState {
 	lastActiveDate: string;
 	totalWordsWritten: number;
 	sessionStartAt: string | null;
+	sessionWordGoal: number;
+	sessionPageGoal: number;
+	sprintEndsAt: string | null;
+	sprintStartWords: number;
+	lastSessionSummary: string | null;
 }
 
 function todayKey(): string {
@@ -34,6 +39,11 @@ export function createDefaultWritingStats(): WritingStatsState {
 		lastActiveDate: today,
 		totalWordsWritten: 0,
 		sessionStartAt: null,
+		sessionWordGoal: 250,
+		sessionPageGoal: 1,
+		sprintEndsAt: null,
+		sprintStartWords: 0,
+		lastSessionSummary: null,
 	};
 }
 
@@ -150,4 +160,52 @@ export function getSessionMinutes(stats: WritingStatsState): number {
 	const started = new Date(stats.sessionStartAt).getTime();
 	const elapsed = Date.now() - started;
 	return Math.max(0, Math.round(elapsed / 60_000));
+}
+
+export function startWritingSprint(minutes: number): WritingStatsState {
+	const stats = startWritingSession();
+	const next = {
+		...stats,
+		sprintEndsAt: new Date(Date.now() + minutes * 60_000).toISOString(),
+		sprintStartWords: stats.todayWords,
+	};
+	saveWritingStats(next);
+	return next;
+}
+
+export function endWritingSprint(currentWords: number): WritingStatsState {
+	const stats = loadWritingStats();
+	const wordsAdded = Math.max(0, currentWords - stats.sprintStartWords);
+	const minutes = stats.sessionStartAt
+		? Math.max(1, Math.round((Date.now() - new Date(stats.sessionStartAt).getTime()) / 60_000))
+		: 0;
+	const pagesAdded = Number((wordsAdded / 250).toFixed(1));
+	const next = {
+		...stats,
+		sprintEndsAt: null,
+		sessionStartAt: null,
+		lastSessionSummary: `${wordsAdded} words · ~${pagesAdded} pages · ${minutes} min`,
+	};
+	saveWritingStats(next);
+	return next;
+}
+
+export function getSprintRemainingMinutes(stats: WritingStatsState): number {
+	if (!stats.sprintEndsAt) {
+		return 0;
+	}
+
+	const remainingMs = new Date(stats.sprintEndsAt).getTime() - Date.now();
+	return Math.max(0, Math.ceil(remainingMs / 60_000));
+}
+
+export function setSessionGoals(wordGoal: number, pageGoal: number): WritingStatsState {
+	const stats = loadWritingStats();
+	const next = {
+		...stats,
+		sessionWordGoal: Math.max(50, Math.round(wordGoal)),
+		sessionPageGoal: Math.max(0.25, Number(pageGoal.toFixed(2))),
+	};
+	saveWritingStats(next);
+	return next;
 }

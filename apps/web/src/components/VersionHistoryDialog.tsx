@@ -11,6 +11,7 @@ import {
 } from '../utils/screenplay-storage';
 import type { ScreenplayDocumentRecord, ScreenplayVersionSnapshot } from '../types';
 import { diffScreenplayContent, summarizeDiff } from '../utils/version-diff';
+import { restoreRemovedLineToContent } from '../utils/version-restore-hunk';
 import { useScreenplayStore } from '../store';
 
 interface VersionHistoryDialogProps {
@@ -238,12 +239,36 @@ export function VersionHistoryDialog({ open, documentId, currentContent, onResto
 											key={`${line.type}-${index}`}
 											className={
 												line.type === 'added'
-													? 'block text-emerald-600 dark:text-emerald-400'
-													: 'block text-rose-600 line-through dark:text-rose-400'
+													? 'group block text-emerald-600 dark:text-emerald-400'
+													: 'group block text-rose-600 line-through dark:text-rose-400'
 											}
 										>
 											{line.type === 'added' ? '+ ' : '- '}
 											{line.text || ' '}
+											{line.type === 'removed' && selectedVersion ? (
+												<button
+													type="button"
+													className="ml-2 hidden rounded border px-1.5 py-0.5 text-[10px] no-underline group-hover:inline"
+													onClick={() => {
+														if (!currentDocument) {
+															return;
+														}
+
+														void (async () => {
+															await createManualVersionSnapshot(currentDocument, 'Before passage restore');
+															const nextContent = restoreRemovedLineToContent(
+																currentContent ?? { type: 'doc', content: [] },
+																selectedVersion.content,
+																line.text,
+															);
+															useScreenplayStore.getState().setDocumentContent(nextContent);
+															onRestored();
+														})();
+													}}
+												>
+													Restore this passage
+												</button>
+											) : null}
 										</span>
 									))}
 								</pre>

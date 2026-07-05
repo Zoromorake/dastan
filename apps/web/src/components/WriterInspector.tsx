@@ -70,7 +70,7 @@ const blockLabels: Record<ScreenplayBlockType, string> = {
 	lyrics: 'Lyrics',
 };
 
-const revisionColors: ScreenplayRevisionColor[] = ['none', 'blue', 'pink', 'green', 'yellow'];
+const revisionColors: ScreenplayRevisionColor[] = ['none', 'white', 'blue', 'pink', 'yellow', 'green', 'goldenrod'];
 
 const smartTypeListLabels: Record<SmartTypeListKey, string> = {
 	characters: 'Characters',

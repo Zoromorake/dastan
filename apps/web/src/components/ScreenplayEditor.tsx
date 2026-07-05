@@ -97,6 +97,12 @@ import { TitlePagePanel } from './TitlePagePanel';
 import { TopBar } from './TopBar';
 import type { SettingsTab, UserThemeSetting } from './UserSettingsPanel';
 import { VersionHistoryDialog } from './VersionHistoryDialog';
+import { getChangedBlockIndices } from '../utils/block-diff';
+import { getCharacterHighlightColor } from '../utils/character-highlight';
+import { ReportsPanel } from './ReportsPanel';
+import { getVersionHistory } from '../utils/screenplay-storage';
+import { resolveBaselineSnapshot } from '../utils/revision-mode';
+import type { DocumentViewOptions } from '../types';
 import { WriterInspector } from './WriterInspector';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -188,6 +194,8 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 	const [scriptNoteOpen, setScriptNoteOpen] = useState(false);
 	const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+	const [reportsOpen, setReportsOpen] = useState(false);
+	const [baselineContent, setBaselineContent] = useState<JSONContent | null>(null);
 	const [typewriterMode, setTypewriterModeState] = useState(() => loadTypewriterMode());
 	const [smartTypeQuery, setSmartTypeQuery] = useState('');
 	const [smartTypeAnchorTop, setSmartTypeAnchorTop] = useState(0);
@@ -369,6 +377,78 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		[documentWorkspace.scriptNotes],
 	);
 
+	const viewOptions = documentWorkspace.viewOptions ?? {
+		showChangeMarks: true,
+		showCharacterHighlighting: false,
+		showStructureLines: false,
+	};
+
+	const changedBlockIndices = useMemo(() => {
+		if (!viewOptions.showChangeMarks || !baselineContent || !currentDocument?.content) {
+			return new Set<number>();
+		}
+
+		return new Set(getChangedBlockIndices(currentDocument.content, baselineContent));
+	}, [baselineContent, currentDocument?.content, viewOptions.showChangeMarks]);
+
+	const activeRevisionColor =
+		documentLayout.revisionModeActive && documentLayout.revisionColor !== 'none'
+			? documentLayout.revisionColor
+			: null;
+
+	const syncEditorDecorations = useCallback(
+		(activeEditor: Editor) => {
+			syncScriptNoteMarkers(activeEditor);
+			const blockNodes = activeEditor.view.dom.querySelectorAll<HTMLElement>('[data-block-type]');
+			const blocks = getScreenplayBlocksFromContent(currentDocument?.content ?? null);
+			let dialogueCharacter = '';
+
+			blockNodes.forEach((node, index) => {
+				if (changedBlockIndices.has(index)) {
+					node.setAttribute('data-change-mark', 'true');
+
+					if (activeRevisionColor) {
+						node.setAttribute('data-revision-mark', activeRevisionColor);
+					} else {
+						node.removeAttribute('data-revision-mark');
+					}
+				} else {
+					node.removeAttribute('data-change-mark');
+					node.removeAttribute('data-revision-mark');
+				}
+
+				const block = blocks[index];
+
+				if (block?.type === 'character') {
+					dialogueCharacter = block.text.trim().toUpperCase();
+				}
+
+				if (
+					viewOptions.showCharacterHighlighting &&
+					!focusMode &&
+					(block?.type === 'character' || block?.type === 'dialogue') &&
+					dialogueCharacter
+				) {
+					node.style.setProperty(
+						'--character-highlight-color',
+						getCharacterHighlightColor(dialogueCharacter, documentWorkspace.characterHighlightColors ?? {}),
+					);
+				} else {
+					node.style.removeProperty('--character-highlight-color');
+				}
+			});
+		},
+		[
+			activeRevisionColor,
+			changedBlockIndices,
+			currentDocument?.content,
+			documentWorkspace.characterHighlightColors,
+			focusMode,
+			syncScriptNoteMarkers,
+			viewOptions.showCharacterHighlighting,
+		],
+	);
+
 	const updateEditorOverlayState = useCallback((selectionEditor: Editor) => {
 		const blockType = getEditorBlockType(selectionEditor);
 		const parentElement = selectionEditor.view.dom.parentElement;
@@ -421,7 +501,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 					onUpdate: ({ editor: updatedEditor }) => {
 						persistenceHandleUpdate();
 						updateEditorOverlayState(updatedEditor);
-						syncScriptNoteMarkers(updatedEditor);
+						syncEditorDecorations(updatedEditor);
 						requestAnimationFrame(() => {
 							alignDualDialogueColumns(updatedEditor.view.dom);
 						});
@@ -448,7 +528,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 					},
 				}
 			: undefined,
-		[documentCollaboration.extensions, documentCollaboration.isReady, handleEditorKeyDown, syncScriptNoteMarkers, updateEditorOverlayState],
+		[documentCollaboration.extensions, documentCollaboration.isReady, handleEditorKeyDown, syncEditorDecorations, updateEditorOverlayState],
 	);
 
 	useEffect(() => {
@@ -596,9 +676,20 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		const root = editor.view.dom;
 		root.classList.toggle('script-editor--dark', isDark);
 		root.classList.toggle('script-editor--scene-numbers', documentLayout.showSceneNumbers);
+		root.classList.toggle(
+			'script-editor--character-highlight',
+			viewOptions.showCharacterHighlighting && !focusMode,
+		);
 		const textColor = resolveLayoutTextColor(documentLayout.pageAppearance.textColor, isDark);
 		root.style.color = textColor ?? (isDark ? '#e2e8f0' : '#1c1917');
-	}, [documentLayout.pageAppearance.textColor, documentLayout.showSceneNumbers, editor, isDark]);
+	}, [
+		documentLayout.pageAppearance.textColor,
+		documentLayout.showSceneNumbers,
+		editor,
+		focusMode,
+		isDark,
+		viewOptions.showCharacterHighlighting,
+	]);
 
 	useEffect(() => {
 		const styleId = 'screenplay-element-typography';
@@ -1084,6 +1175,18 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		[persistenceQueueSave, setDocumentWorkspace],
 	);
 
+	const handleViewOptionChange = useCallback(
+		(patch: Partial<DocumentViewOptions>) => {
+			handleWorkspaceChange({
+				viewOptions: {
+					...viewOptions,
+					...patch,
+				},
+			});
+		},
+		[handleWorkspaceChange, viewOptions],
+	);
+
 	const handleElementBehaviorChange = useCallback(
 		(blockType: ScreenplayBlockType, field: 'enterTarget' | 'tabTarget', value: ScreenplayBlockType) => {
 			setDocumentLayout({
@@ -1444,8 +1547,46 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			return;
 		}
 
-		syncScriptNoteMarkers(editor);
-	}, [currentDocument?.content, documentWorkspace.scriptNotes, editor, syncScriptNoteMarkers]);
+		syncEditorDecorations(editor);
+	}, [
+		activeRevisionColor,
+		baselineContent,
+		changedBlockIndices,
+		currentDocument?.content,
+		documentWorkspace.characterHighlightColors,
+		documentWorkspace.scriptNotes,
+		editor,
+		focusMode,
+		syncEditorDecorations,
+		viewOptions.showCharacterHighlighting,
+		viewOptions.showChangeMarks,
+	]);
+
+	useEffect(() => {
+		if (!currentDocument?.id) {
+			setBaselineContent(null);
+			return;
+		}
+
+		let active = true;
+
+		void (async () => {
+			const versions = await getVersionHistory(currentDocument.id);
+			const baseline = resolveBaselineSnapshot(
+				versions,
+				documentWorkspace.revisionSets ?? [],
+				documentWorkspace.activeRevisionSetId ?? null,
+			);
+
+			if (active) {
+				setBaselineContent(baseline?.content ?? null);
+			}
+		})();
+
+		return () => {
+			active = false;
+		};
+	}, [currentDocument?.id, currentDocument?.content, documentWorkspace.activeRevisionSetId, documentWorkspace.revisionSets]);
 
 	const handleTitlePageChange = useCallback(
 		(titlePage: Partial<typeof documentLayout.titlePage>) => {
@@ -1732,12 +1873,25 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 						<ScriptActionsMenu
 							resolvedTheme={resolvedTheme}
 							showSceneNumbers={documentLayout.showSceneNumbers}
+							showChangeMarks={viewOptions.showChangeMarks}
+							showCharacterHighlighting={viewOptions.showCharacterHighlighting}
+							showStructureLines={viewOptions.showStructureLines}
 							canMoveSceneUp={currentSceneIndex > 0}
 							canMoveSceneDown={currentSceneIndex < sceneCount - 1}
 							onExport={handleExport}
 							onToggleSceneNumbers={() => {
 								handleLayoutChange({ showSceneNumbers: !documentLayout.showSceneNumbers });
 							}}
+							onToggleChangeMarks={() => {
+								handleViewOptionChange({ showChangeMarks: !viewOptions.showChangeMarks });
+							}}
+							onToggleCharacterHighlighting={() => {
+								handleViewOptionChange({ showCharacterHighlighting: !viewOptions.showCharacterHighlighting });
+							}}
+							onToggleStructureLines={() => {
+								handleViewOptionChange({ showStructureLines: !viewOptions.showStructureLines });
+							}}
+							onOpenReports={() => setReportsOpen(true)}
 							onMoveSceneUp={() => handleMoveScene('up')}
 							onMoveSceneDown={() => handleMoveScene('down')}
 						/>
@@ -1767,6 +1921,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 						activeSceneIndex={currentSceneIndex}
 						documentId={currentDocument.id}
 						documentTitle={currentDocument.title}
+						documentContent={currentDocument.content}
 						workspace={documentWorkspace}
 						resolvedTheme={resolvedTheme}
 						onToggleCollapsed={() => setSidebarCollapsed((currentValue) => !currentValue)}
@@ -1902,6 +2057,14 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				onClose={() => setScriptNoteOpen(false)}
 				onAddReply={handleAddScriptNoteReply}
 				onDelete={handleDeleteScriptNote}
+			/>
+
+			<ReportsPanel
+				open={reportsOpen}
+				content={currentDocument.content}
+				documentTitle={currentDocument.title}
+				resolvedTheme={resolvedTheme}
+				onClose={() => setReportsOpen(false)}
 			/>
 
 			<VersionHistoryDialog
