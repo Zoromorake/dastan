@@ -6,9 +6,9 @@ import { formatScopedMemories } from './ai-memory-format';
 import type { AiInteractionMode } from './ai-interaction-mode';
 import { getInteractionModeInstructions } from './ai-interaction-mode';
 import { toPlainTextScreenplay } from './screenplay-text';
-import { buildSmartScriptContext } from './ai-context-script';
+import { buildSmartScriptContext, MAX_SCRIPT_CHARS } from './ai-context-script';
 
-export const MAX_SCRIPT_CHARS = 24_000;
+export { MAX_SCRIPT_CHARS };
 
 export interface AiContextInput {
 	documentId: string;
@@ -22,6 +22,7 @@ export interface AiContextInput {
 	includeWorkspaceContext: boolean;
 	selectionText?: string | null;
 	interactionMode?: AiInteractionMode;
+	activeWorkspaceTab?: string | null;
 	activeCollaborators?: CollaboratorPresence[];
 }
 
@@ -34,7 +35,7 @@ function truncateText(text: string, maxChars: number): string {
 		return text;
 	}
 
-	return `${text.slice(0, maxChars)}\n\n[Script truncated for context window]`;
+	return `${text.slice(0, maxChars)}\n\n[Context trimmed for token budget]`;
 }
 
 export function formatWorkspaceSummary(workspace: ScreenplayWorkspaceData): string {
@@ -130,7 +131,7 @@ export function buildAiContext(input: AiContextInput): AiContextPayload {
 	const sections: string[] = [
 		'You are a screenplay writing assistant for Dastan, a professional script editor.',
 		'Help the writer with structure, dialogue, pacing, character arcs, and industry-standard formatting.',
-		getInteractionModeInstructions(input.interactionMode ?? 'writer'),
+		getInteractionModeInstructions(input.interactionMode ?? 'planner'),
 	];
 
 	if (input.globalRules.trim()) {
@@ -162,6 +163,10 @@ export function buildAiContext(input: AiContextInput): AiContextPayload {
 	}
 
 	sections.push(`Current script title: "${input.documentTitle}"`);
+
+	if (input.activeWorkspaceTab) {
+		sections.push(`Active workspace view: ${input.activeWorkspaceTab}`);
+	}
 
 	const selection = input.selectionText?.trim();
 

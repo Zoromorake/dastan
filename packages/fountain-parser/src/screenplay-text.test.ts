@@ -33,4 +33,21 @@ describe('screenplay-text exports', () => {
 		expect(fdx).toContain('<TitlePage>');
 		expect(fdx).toContain('Test Script');
 	});
+
+	it('uppercases mixed-case character cues in fdx export', () => {
+		const mixedCaseContent = {
+			type: 'doc',
+			content: [
+				{ type: 'scene_heading', content: [{ type: 'text', text: 'int. room - day' }] },
+				{ type: 'character', content: [{ type: 'text', text: 'mara' }] },
+				{ type: 'dialogue', content: [{ type: 'text', text: 'Hello?' }] },
+			],
+		};
+
+		const fdx = toFinalDraftScreenplay(mixedCaseContent, 'Case Test');
+
+		expect(fdx).toContain('<Text>INT. ROOM - DAY</Text>');
+		expect(fdx).toContain('<Text>MARA</Text>');
+		expect(fdx).not.toContain('<Text>mara</Text>');
+	});
 });

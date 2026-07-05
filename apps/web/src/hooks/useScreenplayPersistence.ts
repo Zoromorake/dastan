@@ -23,7 +23,7 @@ export function useScreenplayPersistence(documentId: string | undefined) {
 	const [isLoaded, setIsLoaded] = useState(false);
 	const lastAutoSnapshotRef = useRef<number>(0);
 	const saveCountSinceSnapshotRef = useRef(0);
-	const AUTO_SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
+	const AUTO_SNAPSHOT_INTERVAL_MS = 10 * 60 * 1000;
 	const AUTO_SNAPSHOT_SAVE_INTERVAL = 20;
 	const previousContentRef = useRef<JSONContent | null>(null);
 	const setDocument = useScreenplayStore((state) => state.setCurrentDocument);

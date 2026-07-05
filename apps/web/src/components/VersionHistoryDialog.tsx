@@ -89,7 +89,7 @@ export function VersionHistoryDialog({ open, documentId, currentContent, onResto
 				<DialogHeader>
 					<DialogTitle>Version History</DialogTitle>
 					<DialogDescription>
-						Save a new version when you finish a draft or pass. Autosave keeps your work safe; versions are snapshots you create on demand.
+						Named checkpoints are saved on demand. Automatic snapshots are created every 10 minutes of active editing (and before AI edits).
 					</DialogDescription>
 				</DialogHeader>
 
@@ -150,9 +150,14 @@ export function VersionHistoryDialog({ open, documentId, currentContent, onResto
 								>
 									<div>
 										<p className="font-medium">
-											{version.label || version.title || 'Untitled'}
+											{version.isManual === false
+												? version.label || 'Automatic snapshot'
+												: version.label || version.title || 'Untitled'}
 										</p>
-										<p className="text-xs text-muted-foreground">{formatVersionDate(version.savedAt)}</p>
+										<p className="text-xs text-muted-foreground">
+											{formatVersionDate(version.savedAt)}
+											{version.isManual === false ? ' · Auto' : version.label ? ' · Checkpoint' : ''}
+										</p>
 									</div>
 									<div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
 										<Button
