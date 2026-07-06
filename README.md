@@ -1,8 +1,14 @@
 # Dastan
 
-Local-first, open-core screenplay writing platform. Built with React, TipTap, IndexedDB, and Vite.
+**Write the script. Keep the script.** Dastan is local-first, open-source (AGPL) screenwriting — free to write, with AI on your own API key and every edit reviewable.
 
-> **Writing is free.** AI compute, convenience, collaboration, and enterprise support fund the project.
+<!-- ARIF: hero screenshot — editor in dark ink UI, bright paper page, LUNAR-style sample script, focus mode off, structure lines optional -->
+
+[![AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![CI](https://github.com/Zoromorake/dastan/actions/workflows/ci.yml/badge.svg)](https://github.com/Zoromorake/dastan/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-dastan.app-555)](https://docs.dastan.app)
+
+Run locally with `npm run dev`. Build the marketing site with `npm run site:dev`. **Writing is free** — AI compute, convenience, collaboration, and enterprise support fund the project.
 
 Licensed under [AGPL-3.0](LICENSE). See [TRADEMARK.md](TRADEMARK.md) and [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 
@@ -11,6 +17,7 @@ Licensed under [AGPL-3.0](LICENSE). See [TRADEMARK.md](TRADEMARK.md) and [COMMER
 ```text
 apps/
   web/          # Main Vite + React app (@dastan/web)
+  site/         # Astro landing + Starlight docs (@dastan/site)
   desktop/      # Placeholder for future native shell
   mobile/       # Placeholder for future mobile shell
 packages/
@@ -59,6 +66,8 @@ npm run build    # production build
 | `npm run build` | Typecheck and production build |
 | `npm run preview` | Preview production build |
 | `npm test` | Run Vitest across workspaces |
+| `npm run site:dev` | Astro dev server (landing + docs) |
+| `npm run site:build` | Build static site to `apps/site/dist` |
 
 ## Keyboard shortcuts
 

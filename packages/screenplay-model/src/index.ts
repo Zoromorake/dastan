@@ -239,6 +239,7 @@ export interface ScreenplayWorkspaceData {
 	characterHighlightColors?: Record<string, string>;
 	revisionSets?: RevisionSetRecord[];
 	activeRevisionSetId?: string | null;
+	/** Keys are 0-based scene ordinals, values are display labels (e.g. "12A"). */
 	sceneNumberLocks?: Record<number, string>;
 }
 

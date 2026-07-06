@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, MoreHorizontal } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, MoreHorizontal } from 'lucide-react';
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -16,6 +16,7 @@ interface ScriptActionsMenuProps {
 	showChangeMarks: boolean;
 	showCharacterHighlighting: boolean;
 	showStructureLines: boolean;
+	typewriterMode?: boolean;
 	canMoveSceneUp: boolean;
 	canMoveSceneDown: boolean;
 	onExport: (format: 'fountain' | 'text' | 'fdx' | 'pdf') => void;
@@ -23,6 +24,7 @@ interface ScriptActionsMenuProps {
 	onToggleChangeMarks: () => void;
 	onToggleCharacterHighlighting: () => void;
 	onToggleStructureLines: () => void;
+	onToggleTypewriterMode?: () => void;
 	onOpenReports: () => void;
 	onMoveSceneUp: () => void;
 	onMoveSceneDown: () => void;
@@ -34,6 +36,7 @@ export function ScriptActionsMenu({
 	showChangeMarks,
 	showCharacterHighlighting,
 	showStructureLines,
+	typewriterMode = false,
 	canMoveSceneUp,
 	canMoveSceneDown,
 	onExport,
@@ -41,6 +44,7 @@ export function ScriptActionsMenu({
 	onToggleChangeMarks,
 	onToggleCharacterHighlighting,
 	onToggleStructureLines,
+	onToggleTypewriterMode,
 	onOpenReports,
 	onMoveSceneUp,
 	onMoveSceneDown,
@@ -77,6 +81,12 @@ export function ScriptActionsMenu({
 					<DropdownMenuItem onClick={onToggleStructureLines}>
 						{showStructureLines ? 'Hide structure lines' : 'Show structure lines'}
 					</DropdownMenuItem>
+					{onToggleTypewriterMode ? (
+						<DropdownMenuItem onClick={onToggleTypewriterMode}>
+							Typewriter mode
+							{typewriterMode ? <Check className="ml-auto size-4" /> : null}
+						</DropdownMenuItem>
+					) : null}
 				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
 				<DropdownMenuGroup>

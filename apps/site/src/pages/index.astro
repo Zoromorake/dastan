@@ -1,0 +1,82 @@
+---
+import LandingLayout from '../layouts/LandingLayout.astro';
+import Hero from '../components/landing/Hero.astro';
+import Pillars from '../components/landing/Pillars.astro';
+import Craft from '../components/landing/Craft.astro';
+import Production from '../components/landing/Production.astro';
+import Comparison from '../components/landing/Comparison.astro';
+import Faq from '../components/landing/Faq.astro';
+import Footer from '../components/landing/Footer.astro';
+import { fetchGitHubStars, getSiteConfig } from '../lib/site-config';
+
+const config = getSiteConfig();
+const links = {
+	appUrl: config.appUrl,
+	repoUrl: config.repoUrl,
+	docsUrl: config.docsUrl,
+	contactEmail: config.contactEmail,
+};
+const stars = await fetchGitHubStars(config.repoUrl);
+---
+
+<LandingLayout>
+	<header class="top-nav">
+		<a class="top-nav__logo" href="/">
+			<span aria-hidden="true">▌</span> Dastan
+		</a>
+		<nav class="top-nav__links">
+			<a href={links.docsUrl}>Docs</a>
+			<a href={links.repoUrl} rel="noreferrer" target="_blank">GitHub</a>
+			<a class="top-nav__cta" href={links.appUrl}>Open app</a>
+		</nav>
+	</header>
+
+	<main>
+		<Hero links={links} stars={stars} />
+		<Pillars />
+		<Craft links={links} />
+		<Production />
+		<Comparison />
+		<Faq />
+	</main>
+
+	<Footer links={links} />
+</LandingLayout>
+
+<style>
+	.top-nav {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 1rem 1.25rem;
+		max-width: 72rem;
+		margin: 0 auto;
+	}
+
+	.top-nav__logo {
+		font-family: 'Courier Prime', monospace;
+		font-weight: 700;
+		text-decoration: none;
+		letter-spacing: 0.06em;
+	}
+
+	.top-nav__links {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		font-size: 0.88rem;
+	}
+
+	.top-nav__links a {
+		text-decoration: none;
+		color: #d6d3d1;
+	}
+
+	.top-nav__cta {
+		padding: 0.4rem 0.75rem;
+		border-radius: 0.35rem;
+		background: var(--revision-yellow);
+		color: #0c0b0a !important;
+		font-weight: 600;
+	}
+</style>

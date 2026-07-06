@@ -1,0 +1,66 @@
+---
+import type { SiteLinks } from '../../lib/types';
+
+interface Props {
+	links: SiteLinks;
+}
+
+const { links } = Astro.props;
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer reveal">
+	<div class="site-footer__inner">
+		<p class="site-footer__brand font-screenplay">Dastan</p>
+		<nav class="site-footer__nav" aria-label="Footer">
+			<a href={links.repoUrl} rel="noreferrer" target="_blank">GitHub</a>
+			<a href={links.docsUrl}>Documentation</a>
+			<a href="https://github.com/Zoromorake/dastan/blob/main/LICENSE">License (AGPL-3.0)</a>
+			<a href={`mailto:${links.contactEmail}`}>{links.contactEmail}</a>
+		</nav>
+		<p class="site-footer__note">
+			“Dastan” is a trademark of the project owners. See <a href="/TRADEMARK.md">TRADEMARK.md</a> in the repository.
+		</p>
+		<p class="site-footer__copy">© {year} Dastan contributors</p>
+	</div>
+</footer>
+
+<style>
+	.site-footer {
+		padding: 3rem 1.25rem 4rem;
+		border-top: 1px solid #292524;
+		margin-top: 2rem;
+	}
+
+	.site-footer__inner {
+		max-width: 72rem;
+		margin: 0 auto;
+	}
+
+	.site-footer__brand {
+		font-family: 'Courier Prime', monospace;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		margin: 0 0 1rem;
+	}
+
+	.site-footer__nav {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1rem 1.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.site-footer__nav a {
+		color: #d6d3d1;
+		font-size: 0.9rem;
+	}
+
+	.site-footer__note,
+	.site-footer__copy {
+		font-size: 0.78rem;
+		color: #78716c;
+		margin: 0.35rem 0 0;
+	}
+</style>

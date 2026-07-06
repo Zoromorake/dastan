@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, Loader2, Menu } from 'lucide-react';
 import {
 	DropdownMenu,
@@ -45,6 +45,7 @@ interface TopBarProps {
 	typewriterMode?: boolean;
 	onToggleTypewriterMode?: () => void;
 	scriptStatsLabel?: string;
+	sprintChip?: ReactNode;
 	collaborators?: CollaboratorPresence[];
 	collaborationActive?: boolean;
 }
@@ -72,6 +73,7 @@ export function TopBar({
 	typewriterMode = false,
 	onToggleTypewriterMode,
 	scriptStatsLabel,
+	sprintChip,
 	collaborators = [],
 	collaborationActive = false,
 }: TopBarProps) {
@@ -258,6 +260,7 @@ export function TopBar({
 					{scriptStatsLabel ? (
 						<span className="hidden text-xs tabular-nums text-muted-foreground md:inline">{scriptStatsLabel}</span>
 					) : null}
+					{sprintChip ? <div className="hidden sm:block">{sprintChip}</div> : null}
 					<LocalAccountBadge className="hidden sm:inline-flex" />
 					<div
 						aria-label={saveIndicatorLabel}

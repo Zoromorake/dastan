@@ -1,0 +1,65 @@
+---
+draft: false
+title: Getting started
+description: Create your first script in five minutes.
+---
+
+import ScreenplayBlock from '../../components/ScreenplayBlock.astro';
+
+A five-minute path from zero to exported PDF — for writers who have never used screenwriting software.
+
+## 1. Open Dastan
+
+Run the web app locally (`npm run dev` from the repo) or open your deployed instance. On first launch with an empty vault, Dastan seeds a short sample script (*The Last Garden*) and may show a brief editor tour.
+
+## 2. Create or open a script
+
+From the **Vault** hub:
+
+- Click **New script** to start blank, or
+- Pick a template from the template gallery, or
+- Open an existing script from **Recent**.
+
+Scripts save automatically — there is no Save button you must remember. `⌘S` / `Ctrl+S` still forces a save when you want one.
+
+## 3. Learn the Tab / Enter flow
+
+Dastan is keyboard-first. Each paragraph is one **element** (scene heading, action, character, dialogue, etc.).
+
+| Key | What it does |
+|-----|----------------|
+| **Tab** | Cycle to the next element type (or advance a scene heading through INT./EXT.) |
+| **Shift+Tab** | Cycle backward |
+| **Enter** | Split the block and move to the logical next element (e.g. Character → Dialogue) |
+| **Shift+Enter** | Alternate split (e.g. insert a parenthetical) |
+
+Example blocks:
+
+<ScreenplayBlock type="scene_heading">INT. COFFEE SHOP - DAY</ScreenplayBlock>
+<ScreenplayBlock type="action">Steam rises from a forgotten cup.</ScreenplayBlock>
+<ScreenplayBlock type="character">MAYA</ScreenplayBlock>
+<ScreenplayBlock type="dialogue">I think we're still in the first act.</ScreenplayBlock>
+
+Start a scene heading with `INT.` or `EXT.` and press **Tab** to fill location and time-of-day segments.
+
+:::note[Why it works this way]
+Industry screenplays are structured data, not free-form paragraphs. Tab/Enter keeps your hands on the keyboard so drafts move faster than reaching for menus.
+:::
+
+## 4. Jump around
+
+- **Left navigator** — scene list; click a scene to scroll there.
+- **⌘\\** — toggle the sidebar.
+- **⌘F** — find and replace.
+
+## 5. Export a PDF
+
+Open the script **actions menu** (⋯ on the script toolbar) → **Export** → **PDF (print)**. Choose whether to include change marks if you are in revision mode.
+
+The print dialog uses Dastan's PDF layout engine. On-screen page view is an estimate; **exported PDF is authoritative** for pagination.
+
+## Next steps
+
+- [The editor](/docs/editor/)
+- [AI assistant](/docs/ai-assistant/)
+- [Your files](/docs/your-files/)

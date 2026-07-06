@@ -159,6 +159,11 @@ body,
     color: #94a3b8;
   }
 
+  .ProseMirror.script-editor--scene-numbers [data-block-type='scene_heading'][data-scene-number]::before,
+  .ProseMirror.script-editor--scene-numbers [data-block-type='scene_heading'][data-scene-number]::after {
+    content: attr(data-scene-number);
+  }
+
   .script-page-sheet {
     position: relative;
     box-sizing: border-box;

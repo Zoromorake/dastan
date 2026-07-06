@@ -1,0 +1,88 @@
+---
+const pillars = [
+	{
+		accent: 'var(--revision-blue)',
+		title: 'Your files',
+		body: 'Local-first. Offline-capable PWA. Fountain, FDX, PDF, and plain text in and out — no lock-in.',
+	},
+	{
+		accent: 'var(--revision-pink)',
+		title: 'Your AI',
+		body: 'Bring your own API key. Every edit is an accept-or-reject suggestion. Your pages are not training data.',
+	},
+	{
+		accent: 'var(--revision-green)',
+		title: 'Your tool',
+		body: 'Open source under AGPL. Free forever for writing. The code is public and auditable.',
+	},
+];
+---
+
+<section class="pillars reveal" id="pillars">
+	<p class="slugline section-slug">INT. THE VAULT — CONTINUOUS</p>
+	<h2 class="section-title">Three things you keep</h2>
+	<div class="pillars__grid">
+		{
+			pillars.map((pillar) => (
+				<article class="pillar-card" style={`--accent: ${pillar.accent}`}>
+					<h3>{pillar.title}</h3>
+					<p>{pillar.body}</p>
+				</article>
+			))
+		}
+	</div>
+</section>
+
+<style>
+	.pillars {
+		padding: 4rem 1.25rem;
+		max-width: 72rem;
+		margin: 0 auto;
+	}
+
+	.section-slug {
+		margin-bottom: 0.5rem;
+	}
+
+	.section-title {
+		font-size: 1.35rem;
+		font-weight: 600;
+		margin: 0 0 1.75rem;
+		color: var(--paper);
+	}
+
+	.pillars__grid {
+		display: grid;
+		gap: 1rem;
+		grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+	}
+
+	.pillar-card {
+		background: var(--ink-soft);
+		border: 1px solid #292524;
+		border-top: 3px solid var(--accent);
+		border-radius: 0.5rem;
+		padding: 1.25rem 1.35rem;
+		transition:
+			transform 0.2s ease,
+			border-color 0.2s ease;
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.pillar-card:hover {
+			transform: translateY(-2px);
+			border-color: var(--accent);
+		}
+	}
+
+	.pillar-card h3 {
+		margin: 0 0 0.5rem;
+		font-size: 1.05rem;
+	}
+
+	.pillar-card p {
+		margin: 0;
+		color: #d6d3d1;
+		font-size: 0.92rem;
+	}
+</style>

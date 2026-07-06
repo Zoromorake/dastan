@@ -1,0 +1,90 @@
+/* Starlight theme overrides — match landing identity without forking the theme. */
+
+:root {
+	--sl-color-accent-low: #1c1916;
+	--sl-color-accent: #ca8a04;
+	--sl-color-accent-high: #f4f0e6;
+	--sl-color-white: #f4f0e6;
+	--sl-color-gray-1: #e7e5e4;
+	--sl-color-gray-2: #d6d3d1;
+	--sl-color-gray-3: #a8a29e;
+	--sl-color-gray-4: #78716c;
+	--sl-color-gray-5: #292524;
+	--sl-color-gray-6: #1c1916;
+	--sl-color-black: #0c0b0a;
+	--sl-font: Inter, system-ui, sans-serif;
+	--sl-font-mono: 'Courier Prime', Courier New, monospace;
+	--sl-text-xs: 0.8125rem;
+}
+
+:root[data-theme='light'],
+[data-theme='light'] {
+	--sl-color-bg: #faf7ef;
+	--sl-color-bg-nav: #f4f0e6;
+	--sl-color-bg-sidebar: #f4f0e6;
+	--sl-color-hairline: #d6d3d1;
+	--sl-color-hairline-shade: #e7e5e4;
+}
+
+:root[data-theme='dark'],
+[data-theme='dark'] {
+	--sl-color-bg: #0c0b0a;
+	--sl-color-bg-nav: #141210;
+	--sl-color-bg-sidebar: #141210;
+	--sl-color-hairline: #292524;
+	--sl-color-hairline-shade: #1c1916;
+}
+
+.sl-markdown-content code:not(:where(.not-content *)) {
+	font-family: var(--sl-font-mono);
+}
+
+.screenplay-block {
+	font-family: 'Courier Prime', Courier New, monospace;
+	font-size: 0.95rem;
+	line-height: 1.45;
+	margin: 0.75rem 0;
+	padding: 0.35rem 0;
+}
+
+.screenplay-block--scene_heading {
+	margin-top: 1.25rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.screenplay-block--action {
+	margin-left: 0;
+	max-width: 36rem;
+}
+
+.screenplay-block--character {
+	margin-top: 0.85rem;
+	margin-left: 9rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.screenplay-block--parenthetical {
+	margin-left: 7rem;
+	max-width: 18rem;
+}
+
+.screenplay-block--dialogue {
+	margin-left: 5rem;
+	max-width: 22rem;
+}
+
+.screenplay-block--transition {
+	margin-top: 0.85rem;
+	text-align: right;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.why-aside {
+	border-left: 3px solid var(--revision-blue);
+}

@@ -328,6 +328,17 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 								/>
 								<p className={`mt-2 text-xs ${ui.muted}`}>Keeps the current line vertically centered as you type.</p>
 							</div>
+
+							<p className={`text-sm ${ui.muted}`}>
+								<a
+									className="underline underline-offset-2 hover:text-foreground"
+									href={import.meta.env.VITE_DASTAN_DOCS_URL ?? 'https://docs.dastan.app'}
+									rel="noreferrer"
+									target="_blank"
+								>
+									Documentation
+								</a>
+							</p>
 						</div>
 					) : null}
 

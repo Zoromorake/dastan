@@ -9,7 +9,9 @@
     "dev": "npm run dev -w @dastan/web",
     "build": "npm run build -w @dastan/web",
     "preview": "npm run preview -w @dastan/web",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "site:dev": "npm run dev -w @dastan/site",
+    "site:build": "npm run build -w @dastan/site"
   },
   "devDependencies": {
     "@types/node": "^24.0.3",

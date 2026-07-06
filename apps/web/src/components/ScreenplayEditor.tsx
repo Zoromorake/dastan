@@ -60,6 +60,7 @@ import { buildElementTypographyCss } from '../utils/screenplay-typography-styles
 import {
 	createDocument,
 	createEmptyScreenplayContent,
+	createManualVersionSnapshot,
 	getActiveDocuments,
 	getProjectById,
 	loadDocumentById,
@@ -101,9 +102,21 @@ import { getChangedBlockIndices } from '../utils/block-diff';
 import { getCharacterHighlightColor } from '../utils/character-highlight';
 import { ReportsPanel } from './ReportsPanel';
 import { getVersionHistory } from '../utils/screenplay-storage';
-import { resolveBaselineSnapshot } from '../utils/revision-mode';
-import type { DocumentViewOptions } from '../types';
+import { resolveBaselineSnapshot, createRevisionSetRecord, buildRevisionExportHeader, applyRevisionBorderClass } from '../utils/revision-mode';
+import type { DocumentViewOptions, ScreenplayRevisionColor } from '../types';
 import { WriterInspector } from './WriterInspector';
+import { EditorOnboardingTour } from './EditorOnboardingTour';
+import { PdfExportDialog } from './PdfExportDialog';
+import { WritingSprintChip } from './WritingSprintChip';
+import { loadHasSeenTour } from '../utils/first-run';
+import {
+	applySceneInsertNumbering,
+	computeSceneNumberLabels,
+	sceneNumbersAreLocked,
+} from '../utils/scene-numbering';
+import { StructureLineGutter } from './StructureLineGutter';
+import { buildStructureLineSpans } from '../utils/structure-line-spans';
+import { scrollCaretIntoTypewriterBand } from '../utils/typewriter-scroll';
 import { ErrorBoundary } from './ErrorBoundary';
 
 const AiChatPanel = lazy(() => import('./ai/AiChatPanel').then((module) => ({ default: module.AiChatPanel })));
@@ -196,6 +209,11 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	const [findReplaceOpen, setFindReplaceOpen] = useState(false);
 	const [reportsOpen, setReportsOpen] = useState(false);
 	const [baselineContent, setBaselineContent] = useState<JSONContent | null>(null);
+	const [pdfExportOpen, setPdfExportOpen] = useState(false);
+	const [tourOpen, setTourOpen] = useState(false);
+	const [isStartingRevisionSet, setIsStartingRevisionSet] = useState(false);
+	const previousSceneContentRef = useRef<JSONContent | null>(null);
+	const typewriterSuspendedRef = useRef(false);
 	const [typewriterMode, setTypewriterModeState] = useState(() => loadTypewriterMode());
 	const [smartTypeQuery, setSmartTypeQuery] = useState('');
 	const [smartTypeAnchorTop, setSmartTypeAnchorTop] = useState(0);
@@ -383,6 +401,11 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		showStructureLines: false,
 	};
 
+	const structureLineSpans = useMemo(
+		() => buildStructureLineSpans(currentDocument?.content ?? null, documentWorkspace.development.structureBeats),
+		[currentDocument?.content, documentWorkspace.development.structureBeats],
+	);
+
 	const changedBlockIndices = useMemo(() => {
 		if (!viewOptions.showChangeMarks || !baselineContent || !currentDocument?.content) {
 			return new Set<number>();
@@ -419,6 +442,20 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 
 				const block = blocks[index];
 
+				if (block?.type === 'scene_heading') {
+					const sceneLabels = computeSceneNumberLabels(
+						currentDocument?.content ?? null,
+						documentWorkspace.sceneNumberLocks ?? {},
+					);
+					const label = sceneLabels.get(index);
+
+					if (label && documentLayout.showSceneNumbers) {
+						node.setAttribute('data-scene-number', label);
+					} else {
+						node.removeAttribute('data-scene-number');
+					}
+				}
+
 				if (block?.type === 'character') {
 					dialogueCharacter = block.text.trim().toUpperCase();
 				}
@@ -443,6 +480,8 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			changedBlockIndices,
 			currentDocument?.content,
 			documentWorkspace.characterHighlightColors,
+			documentWorkspace.sceneNumberLocks,
+			documentLayout.showSceneNumbers,
 			focusMode,
 			syncScriptNoteMarkers,
 			viewOptions.showCharacterHighlighting,
@@ -1062,8 +1101,28 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			return;
 		}
 
+		const container = scrollContainerRef.current;
+
+		if (!container) {
+			return;
+		}
+
+		const suspendForManualScroll = () => {
+			typewriterSuspendedRef.current = true;
+		};
+
+		const resumeOnTyping = (event: KeyboardEvent) => {
+			if (event.key.length === 1 || event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Enter') {
+				typewriterSuspendedRef.current = false;
+			}
+		};
+
 		const handleSelectionUpdate = () => {
-			if (!scrollContainerRef.current) {
+			if (typewriterSuspendedRef.current) {
+				return;
+			}
+
+			if (documentCollaboration.isReady && documentCollaboration.peers.length > 0) {
 				return;
 			}
 
@@ -1076,25 +1135,29 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				return;
 			}
 
-			const container = scrollContainerRef.current;
-			const containerRect = container.getBoundingClientRect();
-			const nodeRect = node.getBoundingClientRect();
-			const nodeRelativeTop = nodeRect.top - containerRect.top + container.scrollTop;
-			const targetScrollTop = nodeRelativeTop - container.clientHeight / 2 + nodeRect.height / 2;
-
-			if (Math.abs(container.scrollTop - targetScrollTop) < 1) {
-				return;
-			}
-
-			container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+			scrollCaretIntoTypewriterBand({ container, caretNode: node });
 		};
 
+		container.addEventListener('wheel', suspendForManualScroll, { passive: true });
+		container.addEventListener('touchmove', suspendForManualScroll, { passive: true });
+		container.addEventListener('scroll', suspendForManualScroll, { passive: true });
+		window.addEventListener('keydown', resumeOnTyping, true);
 		editor.on('selectionUpdate', handleSelectionUpdate);
 
 		return () => {
+			container.removeEventListener('wheel', suspendForManualScroll);
+			container.removeEventListener('touchmove', suspendForManualScroll);
+			container.removeEventListener('scroll', suspendForManualScroll);
+			window.removeEventListener('keydown', resumeOnTyping, true);
 			editor.off('selectionUpdate', handleSelectionUpdate);
 		};
-	}, [editor, typewriterMode, workspaceMode]);
+	}, [
+		documentCollaboration.isReady,
+		documentCollaboration.peers.length,
+		editor,
+		typewriterMode,
+		workspaceMode,
+	]);
 
 	const scrollToScene = useCallback((sceneIndex: number) => {
 		setWorkspaceMode('script');
@@ -1187,6 +1250,94 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		[handleWorkspaceChange, viewOptions],
 	);
 
+	const handleStartRevisionSet = useCallback(
+		async (color: ScreenplayRevisionColor) => {
+			if (!currentDocument || color === 'none') {
+				return;
+			}
+
+			setIsStartingRevisionSet(true);
+
+			try {
+				await persistenceForceSave();
+				const version = await createManualVersionSnapshot(
+					currentDocument,
+					`${color.charAt(0).toUpperCase()}${color.slice(1)} revision baseline`,
+				);
+				const record = createRevisionSetRecord(color, version.id);
+
+				handleWorkspaceChange({
+					revisionSets: [...(documentWorkspace.revisionSets ?? []), record],
+					activeRevisionSetId: record.id,
+				});
+				handleLayoutChange({ revisionModeActive: true, revisionColor: color });
+				setBaselineContent(version.content);
+			} finally {
+				setIsStartingRevisionSet(false);
+			}
+		},
+		[
+			currentDocument,
+			documentWorkspace.revisionSets,
+			handleLayoutChange,
+			handleWorkspaceChange,
+			persistenceForceSave,
+		],
+	);
+
+	const exportPdf = useCallback(
+		async (includeChangeMarks: boolean) => {
+			if (!currentDocument) {
+				return;
+			}
+
+			const versions = await getVersionHistory(currentDocument.id);
+			const activeSet =
+				documentWorkspace.revisionSets?.find((set) => set.id === documentWorkspace.activeRevisionSetId) ??
+				null;
+			const baseline = resolveBaselineSnapshot(
+				versions,
+				documentWorkspace.revisionSets ?? [],
+				documentWorkspace.activeRevisionSetId ?? null,
+			);
+			const { getChangedBlockIndices } = await import('@dastan/export');
+			const changedIndices = getChangedBlockIndices(currentDocument.content, baseline?.content ?? baselineContent);
+
+			void import('../utils/pdf-export')
+				.then(({ exportDocumentToPdf }) => {
+					exportDocumentToPdf(currentDocument, {
+						includeChangeMarks,
+						changeMarkBlockIndices: changedIndices,
+						revisionMarkColor: activeSet?.color ?? documentLayout.revisionColor,
+						revisionHeader:
+							documentLayout.revisionModeActive || activeSet
+								? buildRevisionExportHeader(activeSet)
+								: undefined,
+						revisionHistoryLines: (documentWorkspace.revisionSets ?? []).map((set) => {
+							const date = new Date(set.createdAt).toLocaleDateString();
+							return `${set.label} — ${date}`;
+						}),
+						revisionBorderClass:
+							documentLayout.revisionModeActive || activeSet
+								? applyRevisionBorderClass(activeSet?.color ?? documentLayout.revisionColor)
+								: undefined,
+					});
+				})
+				.catch((error) => {
+					const message = error instanceof Error ? error.message : 'Could not export PDF.';
+					window.alert(message);
+				});
+		},
+		[
+			baselineContent,
+			currentDocument,
+			documentLayout.revisionColor,
+			documentLayout.revisionModeActive,
+			documentWorkspace.activeRevisionSetId,
+			documentWorkspace.revisionSets,
+		],
+	);
+
 	const handleElementBehaviorChange = useCallback(
 		(blockType: ScreenplayBlockType, field: 'enterTarget' | 'tabTarget', value: ScreenplayBlockType) => {
 			setDocumentLayout({
@@ -1232,14 +1383,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			}
 
 			if (format === 'pdf') {
-				void import('../utils/pdf-export')
-					.then(({ exportDocumentToPdf }) => {
-						exportDocumentToPdf(currentDocument);
-					})
-					.catch((error) => {
-						const message = error instanceof Error ? error.message : 'Could not export PDF.';
-						window.alert(message);
-					});
+				setPdfExportOpen(true);
 				return;
 			}
 
@@ -1554,6 +1698,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		changedBlockIndices,
 		currentDocument?.content,
 		documentWorkspace.characterHighlightColors,
+		documentWorkspace.sceneNumberLocks,
 		documentWorkspace.scriptNotes,
 		editor,
 		focusMode,
@@ -1587,6 +1732,35 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			active = false;
 		};
 	}, [currentDocument?.id, currentDocument?.content, documentWorkspace.activeRevisionSetId, documentWorkspace.revisionSets]);
+
+	useEffect(() => {
+		if (!currentDocument?.content || !sceneNumbersAreLocked(documentWorkspace.sceneNumberLocks)) {
+			previousSceneContentRef.current = currentDocument?.content ?? null;
+			return;
+		}
+
+		const nextLocks = applySceneInsertNumbering(
+			previousSceneContentRef.current,
+			currentDocument.content,
+			documentWorkspace.sceneNumberLocks ?? {},
+		);
+		previousSceneContentRef.current = currentDocument.content;
+
+		if (JSON.stringify(nextLocks) !== JSON.stringify(documentWorkspace.sceneNumberLocks ?? {})) {
+			handleWorkspaceChange({ sceneNumberLocks: nextLocks });
+		}
+	}, [currentDocument?.content, documentWorkspace.sceneNumberLocks, handleWorkspaceChange]);
+
+	useEffect(() => {
+		if (loadHasSeenTour()) {
+			return;
+		}
+
+		if (sessionStorage.getItem('dastan.pending-tour') === '1') {
+			sessionStorage.removeItem('dastan.pending-tour');
+			setTourOpen(true);
+		}
+	}, [currentDocument?.id]);
 
 	const handleTitlePageChange = useCallback(
 		(titlePage: Partial<typeof documentLayout.titlePage>) => {
@@ -1626,7 +1800,13 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 
 	const renderEditorSurface = (
 		<div className={`relative ${revisionClassName}`}>
-			<div className="relative">
+			<div className="relative pl-3">
+				<StructureLineGutter
+					editor={editor}
+					isDark={isDark}
+					spans={structureLineSpans}
+					visible={viewOptions.showStructureLines && !focusMode}
+				/>
 				<EditorContent editor={editor} className="min-h-[820px] focus:outline-none" spellCheck />
 				{emptyElementMenuOpen && editorHasFocus ? (
 					<EmptyElementMenu
@@ -1798,6 +1978,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				typewriterMode={typewriterMode}
 				onToggleTypewriterMode={handleToggleTypewriterMode}
 				scriptStatsLabel={scriptStatsLabel}
+				sprintChip={<WritingSprintChip isDark={isDark} documentContent={currentDocument.content} />}
 				collaborators={documentCollaboration.peers}
 				collaborationActive={documentCollaboration.collaborationActive}
 			/>
@@ -1876,6 +2057,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 							showChangeMarks={viewOptions.showChangeMarks}
 							showCharacterHighlighting={viewOptions.showCharacterHighlighting}
 							showStructureLines={viewOptions.showStructureLines}
+							typewriterMode={typewriterMode}
 							canMoveSceneUp={currentSceneIndex > 0}
 							canMoveSceneDown={currentSceneIndex < sceneCount - 1}
 							onExport={handleExport}
@@ -1891,6 +2073,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 							onToggleStructureLines={() => {
 								handleViewOptionChange({ showStructureLines: !viewOptions.showStructureLines });
 							}}
+							onToggleTypewriterMode={handleToggleTypewriterMode}
 							onOpenReports={() => setReportsOpen(true)}
 							onMoveSceneUp={() => handleMoveScene('up')}
 							onMoveSceneDown={() => handleMoveScene('down')}
@@ -1978,12 +2161,14 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 					{!focusMode && workspaceMode === 'script' ? (
 						<WriterInspector
 							activeBlockType={currentBlockType}
+							activeBlockIndex={currentBlockIndex}
 							documentContent={currentDocument?.content ?? null}
 							documentTitle={currentDocument.title}
 							documentLayout={documentLayout}
 							documentWorkspace={documentWorkspace}
 							resolvedTheme={resolvedTheme}
 							collapsed={inspectorCollapsed}
+							isStartingRevisionSet={isStartingRevisionSet}
 							onToggleCollapsed={() => setInspectorCollapsed((currentValue) => !currentValue)}
 							onTitleChange={handleTitleChange}
 							onLayoutChange={handleLayoutChange}
@@ -1991,6 +2176,11 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 							onElementTypographyChange={handleElementTypographyChange}
 							onBlockTypeChange={setScriptBlockType}
 							onWorkspaceChange={handleWorkspaceChange}
+							onStartRevisionSet={handleStartRevisionSet}
+							onContentChange={(content) => {
+								setDocumentContent(content);
+								void persistenceQueueSave();
+							}}
 						/>
 					) : null}
 				</main>
@@ -2065,6 +2255,22 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				documentTitle={currentDocument.title}
 				resolvedTheme={resolvedTheme}
 				onClose={() => setReportsOpen(false)}
+			/>
+
+			<PdfExportDialog
+				open={pdfExportOpen}
+				resolvedTheme={resolvedTheme}
+				revisionModeActive={documentLayout.revisionModeActive}
+				onClose={() => setPdfExportOpen(false)}
+				onConfirm={(includeChangeMarks) => {
+					void exportPdf(includeChangeMarks);
+				}}
+			/>
+
+			<EditorOnboardingTour
+				open={tourOpen}
+				resolvedTheme={resolvedTheme}
+				onClose={() => setTourOpen(false)}
 			/>
 
 			<VersionHistoryDialog

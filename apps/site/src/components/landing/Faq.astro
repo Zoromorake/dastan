@@ -1,0 +1,75 @@
+---
+const items = [
+	{
+		q: 'Is it really free?',
+		a: 'Yes for writing — the local editor, import/export, version history, and workspace tools are free in the open-source app. Future cloud sync, managed AI, and collaboration may be paid add-ons.',
+	},
+	{
+		q: "Where is my script stored?",
+		a: 'In your browser\'s IndexedDB on your device by default. Nothing is uploaded unless you opt into cloud features when they ship.',
+	},
+	{
+		q: 'Does the AI train on my writing?',
+		a: 'No — with BYOK, your browser sends prompts to your provider with your key. Dastan does not run a training pipeline on your scripts in the open-source app.',
+	},
+	{
+		q: 'Can I open Final Draft files?',
+		a: 'Yes — import .fdx. Keep a backup of the original; complex production metadata may not round-trip perfectly.',
+	},
+	{
+		q: 'What if Dastan disappears?',
+		a: 'Export to Fountain or FDX regularly. The code is AGPL. Your formats are industry-standard.',
+	},
+	{
+		q: 'What does AGPL mean for me as a writer?',
+		a: 'Nothing about your scripts — you own your writing. AGPL applies to the software itself if someone redistributes modified versions.',
+	},
+];
+---
+
+<section class="faq reveal" id="faq">
+	<p class="slugline section-slug">INT. QUESTIONS — LATER</p>
+	<h2 class="section-title">FAQ</h2>
+	<div class="faq__list">
+		{
+			items.map((item) => (
+				<details class="faq__item">
+					<summary>{item.q}</summary>
+					<p>{item.a}</p>
+				</details>
+			))
+		}
+	</div>
+</section>
+
+<style>
+	.faq {
+		padding: 4rem 1.25rem;
+		max-width: 48rem;
+		margin: 0 auto;
+	}
+
+	.faq__list {
+		display: grid;
+		gap: 0.65rem;
+	}
+
+	.faq__item {
+		border: 1px solid #292524;
+		border-radius: 0.45rem;
+		background: var(--ink-soft);
+		padding: 0.65rem 0.85rem;
+	}
+
+	.faq__item summary {
+		cursor: pointer;
+		font-weight: 600;
+		color: var(--paper);
+	}
+
+	.faq__item p {
+		margin: 0.65rem 0 0.15rem;
+		color: #d6d3d1;
+		font-size: 0.92rem;
+	}
+</style>

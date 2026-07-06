@@ -1,0 +1,147 @@
+---
+import { HeroEditor } from '../HeroEditor';
+import type { SiteLinks } from '../../lib/types';
+
+interface Props {
+	links: SiteLinks;
+	stars: number;
+}
+const { links, stars } = Astro.props;
+---
+
+<section class="hero reveal">
+	<div class="hero__inner">
+		<p class="slugline">INT. YOUR SCRIPT — NIGHT</p>
+		<h1 class="hero__title">Write the script.<br />Keep the script.</h1>
+		<p class="hero__sub">
+			Free, open-source, local-first screenwriting — with AI on your own API key, never on your pages by default.
+		</p>
+		<div class="hero__ctas">
+			<a class="btn btn--primary" href={links.appUrl}>Start writing — free</a>
+			<a class="btn btn--ghost" href={links.repoUrl} rel="noreferrer" target="_blank">
+				GitHub
+				<span class="hero__stars" aria-label={`${stars} stars`}>★ {stars}</span>
+			</a>
+		</div>
+	</div>
+
+	<div class="hero__editor hero__editor--desktop">
+		<HeroEditor client:visible />
+	</div>
+
+	<div class="hero__editor hero__editor--mobile">
+		<!--
+			ARIF: screen-record 15s of typing in the real editor — Tab/Enter flow, dark ink UI around bright page,
+			original sample scene, export as webm ~640px wide, place at public/hero-demo.webm
+		-->
+		<div class="hero__video-placeholder" role="img" aria-label="Editor demo video placeholder">
+			<p>Editor demo</p>
+			<span>15s capture slot</span>
+		</div>
+	</div>
+</section>
+
+<style>
+	.hero {
+		padding: 4rem 1.25rem 3rem;
+		max-width: 72rem;
+		margin: 0 auto;
+	}
+
+	.hero__inner {
+		max-width: 40rem;
+		margin-bottom: 2.5rem;
+	}
+
+	.hero__title {
+		font-family: 'Courier Prime', Courier New, monospace;
+		font-size: clamp(2.2rem, 6vw, 3.6rem);
+		font-weight: 700;
+		line-height: 1.08;
+		letter-spacing: -0.02em;
+		margin: 0.75rem 0 1rem;
+		color: var(--paper-bright);
+	}
+
+	.hero__sub {
+		font-size: 1.05rem;
+		color: #d6d3d1;
+		max-width: 34rem;
+		margin: 0 0 1.75rem;
+	}
+
+	.hero__ctas {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+	}
+
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.7rem 1.15rem;
+		border-radius: 0.45rem;
+		font-size: 0.92rem;
+		font-weight: 600;
+		text-decoration: none;
+		transition:
+			transform 0.2s ease,
+			background 0.2s ease,
+			border-color 0.2s ease;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.btn {
+			transition: none;
+		}
+	}
+
+	.btn:hover {
+		transform: translateY(-1px);
+	}
+
+	.btn--primary {
+		background: var(--revision-yellow);
+		color: #0c0b0a;
+	}
+
+	.btn--ghost {
+		border: 1px solid #44403c;
+		background: var(--ink-soft);
+	}
+
+	.hero__stars {
+		font-size: 0.8rem;
+		opacity: 0.85;
+	}
+
+	.hero__editor--mobile {
+		display: none;
+	}
+
+	.hero__video-placeholder {
+		aspect-ratio: 16 / 10;
+		border: 1px dashed #57534e;
+		border-radius: 0.35rem;
+		display: grid;
+		place-content: center;
+		gap: 0.35rem;
+		color: #a8a29e;
+		background: var(--ink-soft);
+		font-family: 'Courier Prime', monospace;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		font-size: 0.75rem;
+	}
+
+	@media (max-width: 768px) {
+		.hero__editor--desktop {
+			display: none;
+		}
+
+		.hero__editor--mobile {
+			display: block;
+		}
+	}
+</style>

@@ -1,0 +1,96 @@
+.hero-editor {
+	width: 100%;
+}
+
+.hero-editor__page {
+	background: var(--paper-bright, #faf7ef);
+	color: #1c1916;
+	border-radius: 0.35rem;
+	box-shadow:
+		0 0 0 1px rgba(255, 255, 255, 0.06),
+		0 24px 60px rgba(0, 0, 0, 0.45);
+	font-family: 'Courier Prime', 'Courier New', monospace;
+	font-size: 0.92rem;
+	line-height: 1.45;
+	min-height: 18rem;
+	padding: 2.25rem 2.5rem 2rem;
+}
+
+.hero-editor__block {
+	outline: none;
+	white-space: pre-wrap;
+	min-height: 1.35em;
+}
+
+.hero-editor__block:empty::before {
+	content: attr(data-placeholder);
+	color: #a8a29e;
+}
+
+.hero-editor__block--active {
+	background: rgba(202, 138, 4, 0.08);
+	border-radius: 0.15rem;
+}
+
+.hero-editor__block--scene_heading {
+	margin-top: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.hero-editor__block--action {
+	max-width: 32rem;
+}
+
+.hero-editor__block--character {
+	margin-top: 0.75rem;
+	margin-left: 8.5rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.hero-editor__block--parenthetical {
+	margin-left: 6.5rem;
+	max-width: 16rem;
+}
+
+.hero-editor__block--dialogue {
+	margin-left: 4.5rem;
+	max-width: 20rem;
+}
+
+.hero-editor__block--transition {
+	margin-top: 0.75rem;
+	text-align: right;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.hero-editor__hint {
+	margin: 0.75rem 0 0;
+	font-family: Inter, system-ui, sans-serif;
+	font-size: 0.75rem;
+	color: #a8a29e;
+}
+
+@media (max-width: 640px) {
+	.hero-editor__page {
+		padding: 1.25rem 1rem;
+		font-size: 0.82rem;
+	}
+
+	.hero-editor__block--character {
+		margin-left: 5rem;
+	}
+
+	.hero-editor__block--parenthetical {
+		margin-left: 3.5rem;
+	}
+
+	.hero-editor__block--dialogue {
+		margin-left: 2.5rem;
+	}
+}

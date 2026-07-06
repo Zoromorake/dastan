@@ -1,0 +1,104 @@
+---
+const revisions = [
+	{ color: 'var(--revision-white)', label: 'White' },
+	{ color: 'var(--revision-blue)', label: 'Blue' },
+	{ color: 'var(--revision-pink)', label: 'Pink' },
+	{ color: 'var(--revision-yellow)', label: 'Yellow' },
+	{ color: 'var(--revision-green)', label: 'Green' },
+	{ color: 'var(--revision-goldenrod)', label: 'Goldenrod' },
+];
+
+const features = [
+	'Locked scene numbers with A-scenes (A13, B13…)',
+	'OMITTED scenes',
+	'Change marks against revision baselines',
+	'Scene, character, and location reports',
+	'Industry PDF and FDX export',
+];
+---
+
+<section class="production reveal" id="production">
+	<p class="slugline section-slug">INT. PRODUCTION OFFICE — DAY</p>
+	<h2 class="section-title">Production dialect, not toy formatting</h2>
+
+	<div class="production__strip" role="list" aria-label="Revision set colors">
+		{
+			revisions.map((rev) => (
+				<div class="production__swatch" style={`--swatch: ${rev.color}`} role="listitem">
+					<span class="production__swatch-color" />
+					<span>{rev.label}</span>
+				</div>
+			))
+		}
+	</div>
+
+	<ul class="production__list">
+		{features.map((feature) => <li>{feature}</li>)}
+	</ul>
+
+	<!--
+		ARIF: capture revision mode with colored border + margin change marks on a short scene,
+		or PDF export dialog with revision options — dark UI, paper page visible
+	-->
+	<div class="production__crop" aria-hidden="true">
+		<span>ARIF: revision marks / PDF export crop — production office vibe</span>
+	</div>
+</section>
+
+<style>
+	.production {
+		padding: 4rem 1.25rem;
+		max-width: 72rem;
+		margin: 0 auto;
+	}
+
+	.production__strip {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.65rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.production__swatch {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.35rem 0.65rem;
+		border-radius: 999px;
+		border: 1px solid #292524;
+		background: var(--ink-soft);
+		font-size: 0.78rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+	}
+
+	.production__swatch-color {
+		width: 0.85rem;
+		height: 0.85rem;
+		border-radius: 999px;
+		background: var(--swatch);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+	}
+
+	.production__list {
+		margin: 0 0 1.25rem;
+		padding-left: 1.1rem;
+		color: #d6d3d1;
+		display: grid;
+		gap: 0.35rem;
+	}
+
+	.production__crop {
+		aspect-ratio: 21 / 9;
+		border: 1px dashed #57534e;
+		border-radius: 0.35rem;
+		display: grid;
+		place-items: center;
+		padding: 1rem;
+		text-align: center;
+		font-family: 'Courier Prime', monospace;
+		font-size: 0.65rem;
+		color: #78716c;
+		background: var(--ink-soft);
+	}
+</style>

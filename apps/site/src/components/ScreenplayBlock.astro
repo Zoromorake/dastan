@@ -1,0 +1,9 @@
+---
+const { type = 'action', class: className = '' } = Astro.props;
+
+const typeClass = `screenplay-block--${type}`;
+---
+
+<div class:list={['screenplay-block', typeClass, className]}>
+	<slot />
+</div>

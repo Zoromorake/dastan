@@ -8,7 +8,7 @@ import type {
 } from '../types';
 import type { DevelopSubTab, WorldSubTab, WorkspaceMode } from '../types/workspace-navigation';
 import { getCharactersForScene } from '../utils/scene-cast';
-import { getStructureLineColor } from '../utils/character-highlight';
+import { getStructureBeatForBlockIndex } from '../utils/structure-line-spans';
 import { getEditorTheme } from '../utils/editor-theme';
 import { getVersionHistory } from '../utils/screenplay-storage';
 import {
@@ -174,22 +174,6 @@ export function EditorNavigator({
 	const [pendingRestoreVersion, setPendingRestoreVersion] = useState<ScreenplayVersionSnapshot | null>(null);
 	const [expandedScenes, setExpandedScenes] = useState<Record<number, boolean>>({});
 	const showStructureLines = workspace.viewOptions?.showStructureLines ?? false;
-	const structureBeatBySceneIndex = useMemo(() => {
-		const map = new Map<number, { label: string; color: string }>();
-
-		for (const beat of workspace.development.structureBeats) {
-			if (typeof beat.linkedSceneIndex !== 'number') {
-				continue;
-			}
-
-			map.set(beat.linkedSceneIndex, {
-				label: beat.label,
-				color: getStructureLineColor(beat.order),
-			});
-		}
-
-		return map;
-	}, [workspace.development.structureBeats]);
 
 	useEffect(() => {
 		if (collapsed || activeSection !== 'versions') {
@@ -231,7 +215,9 @@ export function EditorNavigator({
 							const isActive = index === activeSceneIndex;
 							const cast = getCharactersForScene(documentContent, index);
 							const expanded = expandedScenes[index] ?? false;
-							const structureBeat = structureBeatBySceneIndex.get(scene.index);
+							const structureBeat = showStructureLines
+								? getStructureBeatForBlockIndex(documentContent, workspace.development.structureBeats, scene.index)
+								: null;
 
 							return (
 							<div key={`${scene.index}-${index}`} className={`${isActive ? theme.modeActive : ''}`}>

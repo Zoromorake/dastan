@@ -1,0 +1,156 @@
+---
+import type { SiteLinks } from '../../lib/types';
+
+interface Props {
+	links: SiteLinks;
+}
+
+const { links } = Astro.props;
+
+const cells = [
+	{
+		accent: 'var(--revision-yellow)',
+		title: 'Tab / Enter flow',
+		caption: 'Keyboard-first element cycling',
+		href: `${links.docsUrl}/editor/`,
+		slot: 'ARIF: capture editor with element picker or Tab cycle visible, light paper on dark shell',
+	},
+	{
+		accent: 'var(--revision-blue)',
+		title: 'SmartType',
+		caption: 'Consistent character and location names',
+		href: `${links.docsUrl}/editor/`,
+		slot: 'ARIF: capture SmartType dropdown under a character cue',
+	},
+	{
+		accent: 'var(--revision-pink)',
+		title: 'Beat board',
+		caption: 'Plan beside the draft',
+		href: `${links.docsUrl}/story-tools/`,
+		slot: 'ARIF: capture Develop → Beat Board with 3+ cards',
+		wide: true,
+	},
+	{
+		accent: 'var(--revision-green)',
+		title: 'Structure Lines',
+		caption: 'Colored beat ribbons in the gutter',
+		href: `${links.docsUrl}/story-tools/`,
+		slot: 'ARIF: capture editor with structure lines on + navigator dots',
+	},
+	{
+		accent: 'var(--revision-goldenrod)',
+		title: 'Focus & typewriter',
+		caption: 'Distraction-free drafting modes',
+		href: `${links.docsUrl}/editor/`,
+		slot: 'ARIF: capture focus mode or typewriter mode indicator in top bar',
+	},
+	{
+		accent: 'var(--revision-white)',
+		title: 'Version history',
+		caption: 'Per-passage restore from diffs',
+		href: `${links.docsUrl}/your-files/`,
+		slot: 'ARIF: capture version history diff with restore control',
+		wide: true,
+	},
+];
+---
+
+<section class="craft reveal" id="craft">
+	<p class="slugline section-slug">INT. THE WRITING ROOM — DAY</p>
+	<h2 class="section-title">Craft that stays out of your way</h2>
+	<div class="craft__bento">
+		{
+			cells.map((cell) => (
+				<a
+					class:list={['craft__cell', cell.wide && 'craft__cell--wide']}
+					href={cell.href}
+					style={`--accent: ${cell.accent}`}
+				>
+					<div class="craft__crop" aria-hidden="true">
+						<span>{cell.slot}</span>
+					</div>
+					<div>
+						<h3>{cell.title}</h3>
+						<p>{cell.caption}</p>
+					</div>
+				</a>
+			))
+		}
+	</div>
+</section>
+
+<style>
+	.craft {
+		padding: 4rem 1.25rem;
+		max-width: 72rem;
+		margin: 0 auto;
+	}
+
+	.craft__bento {
+		display: grid;
+		gap: 0.85rem;
+		grid-template-columns: repeat(3, 1fr);
+	}
+
+	.craft__cell {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		padding: 0.85rem;
+		border-radius: 0.5rem;
+		border: 1px solid #292524;
+		background: var(--ink-soft);
+		text-decoration: none;
+		color: inherit;
+		transition:
+			transform 0.2s ease,
+			border-color 0.2s ease;
+	}
+
+	.craft__cell--wide {
+		grid-column: span 2;
+	}
+
+	@media (max-width: 900px) {
+		.craft__bento {
+			grid-template-columns: 1fr;
+		}
+
+		.craft__cell--wide {
+			grid-column: span 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.craft__cell:hover {
+			transform: translateY(-2px);
+			border-color: var(--accent);
+		}
+	}
+
+	.craft__crop {
+		aspect-ratio: 16 / 10;
+		border-radius: 0.35rem;
+		border: 1px dashed #57534e;
+		background: var(--ink-muted);
+		display: grid;
+		place-items: center;
+		padding: 0.75rem;
+		text-align: center;
+		font-size: 0.62rem;
+		color: #78716c;
+		font-family: 'Courier Prime', monospace;
+		line-height: 1.35;
+	}
+
+	.craft__cell h3 {
+		margin: 0;
+		font-size: 0.95rem;
+	}
+
+	.craft__cell p {
+		margin: 0.2rem 0 0;
+		font-size: 0.82rem;
+		color: #a8a29e;
+	}
+</style>

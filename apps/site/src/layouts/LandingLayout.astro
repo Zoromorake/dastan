@@ -1,0 +1,52 @@
+---
+import '../styles/global.css';
+
+interface Props {
+	title?: string;
+	description?: string;
+}
+
+const {
+	title = 'Dastan — Write the script. Keep the script.',
+	description = 'Free, open-source, local-first screenwriting with AI on your own key.',
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="description" content={description} />
+		<title>{title}</title>
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap"
+		/>
+	</head>
+	<body>
+		<slot />
+		<script>
+			const reveals = document.querySelectorAll('.reveal');
+
+			if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+				reveals.forEach((node) => node.classList.add('is-visible'));
+			} else {
+				const observer = new IntersectionObserver(
+					(entries) => {
+						for (const entry of entries) {
+							if (entry.isIntersecting) {
+								entry.target.classList.add('is-visible');
+								observer.unobserve(entry.target);
+							}
+						}
+					},
+					{ threshold: 0.12, rootMargin: '0px 0px -8%' },
+				);
+
+				reveals.forEach((node) => observer.observe(node));
+			}
+		</script>
+	</body>
+</html>

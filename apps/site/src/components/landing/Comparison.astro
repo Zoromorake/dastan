@@ -1,0 +1,94 @@
+---
+const checkedDate = 'July 5, 2026';
+
+const rows = [
+	{ label: 'Price (writing)', dastan: 'Free', fd: 'Paid license', arc: 'Freemium', wd: 'Subscription' },
+	{ label: 'Open source', dastan: 'Yes (AGPL)', fd: 'No', arc: 'No', wd: 'No' },
+	{ label: 'Local-first / offline', dastan: 'Yes', fd: 'Desktop', arc: 'Cloud', wd: 'Cloud' },
+	{ label: 'BYOK AI', dastan: 'Yes', fd: 'No', arc: 'Built-in', wd: 'Built-in' },
+	{ label: 'FDX import/export', dastan: 'Yes', fd: 'Yes', arc: 'Yes', wd: 'Yes' },
+	{ label: 'Collaboration', dastan: 'Coming soon', fd: 'Yes', arc: 'Yes', wd: 'Yes' },
+];
+---
+
+<section class="compare reveal" id="compare">
+	<p class="slugline section-slug">INT. THE HONEST TABLE — DAY</p>
+	<h2 class="section-title">How Dastan compares</h2>
+	<div class="compare__wrap">
+		<table class="compare__table">
+			<thead>
+				<tr>
+					<th scope="col"></th>
+					<th scope="col">Dastan</th>
+					<th scope="col">Final Draft</th>
+					<th scope="col">Arc Studio</th>
+					<th scope="col">WriterDuet</th>
+				</tr>
+			</thead>
+			<tbody>
+				{
+					rows.map((row) => (
+						<tr>
+							<th scope="row">{row.label}</th>
+							<td>{row.dastan}</td>
+							<td>{row.fd}</td>
+							<td>{row.arc}</td>
+							<td>{row.wd}</td>
+						</tr>
+					))
+				}
+			</tbody>
+		</table>
+	</div>
+	<p class="compare__note">Facts checked {checkedDate}. Prices and plans change — verify on each vendor's site.</p>
+</section>
+
+<style>
+	.compare {
+		padding: 4rem 1.25rem;
+		max-width: 72rem;
+		margin: 0 auto;
+	}
+
+	.compare__wrap {
+		overflow-x: auto;
+		border: 1px solid #292524;
+		border-radius: 0.5rem;
+		background: var(--ink-soft);
+	}
+
+	.compare__table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.86rem;
+	}
+
+	.compare__table th,
+	.compare__table td {
+		padding: 0.65rem 0.85rem;
+		border-bottom: 1px solid #292524;
+		text-align: left;
+	}
+
+	.compare__table thead th {
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: #a8a29e;
+	}
+
+	.compare__table tbody th {
+		color: #e7e5e4;
+		font-weight: 500;
+	}
+
+	.compare__table td {
+		color: #d6d3d1;
+	}
+
+	.compare__note {
+		margin: 0.75rem 0 0;
+		font-size: 0.75rem;
+		color: #78716c;
+	}
+</style>

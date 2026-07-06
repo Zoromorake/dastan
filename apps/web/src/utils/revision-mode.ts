@@ -1,7 +1,6 @@
 import type { JSONContent } from '@tiptap/core';
 import type {
 	RevisionSetRecord,
-	ScreenplayDocumentRecord,
 	ScreenplayRevisionColor,
 	ScreenplayVersionSnapshot,
 } from '../types';
@@ -40,7 +39,6 @@ export function resolveBaselineSnapshot(
 export function createRevisionSetRecord(
 	color: ScreenplayRevisionColor,
 	baselineVersionId: string,
-	existingSets: RevisionSetRecord[],
 ): RevisionSetRecord {
 	const label = REVISION_SET_ORDER.find((entry) => entry.color === color)?.label ?? color;
 
@@ -69,8 +67,8 @@ export function toggleSceneOmitted(content: JSONContent, sceneHeadingBlockIndex:
 	return { ...content, content: nodes };
 }
 
-export function getOmittedSceneHeadingText(originalHeading: string): string {
-	return originalHeading.trim().length > 0 ? 'OMITTED' : 'OMITTED';
+export function getOmittedSceneHeadingText(): string {
+	return 'OMITTED';
 }
 
 export function buildRevisionExportHeader(
@@ -99,8 +97,4 @@ export function buildRevisionHistoryBox(revisionSets: RevisionSetRecord[]): stri
 
 export function applyRevisionBorderClass(color: ScreenplayRevisionColor): string {
 	return color === 'none' ? '' : `revision-border-${color}`;
-}
-
-export function snapshotDocumentForRevision(document: ScreenplayDocumentRecord): ScreenplayDocumentRecord {
-	return document;
 }

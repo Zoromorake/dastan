@@ -28,6 +28,8 @@ import {
 	softDeleteDocument,
 	updateProject,
 } from '../utils/screenplay-storage';
+import { createFirstRunSampleContent } from '../utils/sample-first-script';
+import { loadFirstRunSeeded, setFirstRunSeeded } from '../utils/first-run';
 import { isSupportedScreenplayImport, parseImportedScreenplayFile, parseImportedScreenplayPdfFile } from '../utils/screenplay-text';
 import { SCRIPT_TEMPLATE_STRUCTURE } from '../utils/script-templates';
 import { createStructureBeatsFromTemplate } from '../utils/story-structure';
@@ -164,6 +166,33 @@ export function useHubData({
 			active = false;
 		};
 	}, [refreshAll]);
+
+	useEffect(() => {
+		if (loading || loadError || documents.length > 0 || projects.length > 0 || loadFirstRunSeeded()) {
+			return;
+		}
+
+		let active = true;
+
+		void (async () => {
+			try {
+				const createdDocument = await createDocument('The Last Garden', createFirstRunSampleContent());
+				setFirstRunSeeded(true);
+				sessionStorage.setItem('dastan.pending-tour', '1');
+
+				if (active) {
+					await refreshAll();
+					onOpenDocument(createdDocument.id);
+				}
+			} catch (error) {
+				console.error('Failed to seed first-run sample script', error);
+			}
+		})();
+
+		return () => {
+			active = false;
+		};
+	}, [documents.length, loadError, loading, onOpenDocument, projects.length, refreshAll]);
 
 	const visibleProjects = useMemo(() => {
 		const query = searchValue.trim().toLowerCase();

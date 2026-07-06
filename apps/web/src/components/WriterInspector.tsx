@@ -22,11 +22,14 @@ import {
 	YesNoToggle,
 } from './inspector/InspectorControls';
 import { collectSmartTypeLexicon } from '../utils/smarttype';
+import { REVISION_SET_ORDER, toggleSceneOmitted } from '../utils/revision-mode';
+import { lockSceneNumbers, sceneNumbersAreLocked } from '../utils/scene-numbering';
 
 type InspectorTab = 'elements' | 'smarttype' | 'layout';
 
 interface WriterInspectorProps {
 	activeBlockType: ScreenplayBlockType | null;
+	activeBlockIndex?: number;
 	documentContent: JSONContent | null;
 	documentTitle: string;
 	documentLayout: ScreenplayDocumentLayout;
@@ -40,6 +43,9 @@ interface WriterInspectorProps {
 	onElementTypographyChange: (blockType: ScreenplayBlockType, typography: Partial<ScreenplayElementTypography>) => void;
 	onBlockTypeChange: (blockType: ScreenplayBlockType) => void;
 	onWorkspaceChange: (workspace: Partial<ScreenplayWorkspaceData>) => void;
+	onStartRevisionSet?: (color: ScreenplayRevisionColor) => void | Promise<void>;
+	onContentChange?: (content: JSONContent) => void;
+	isStartingRevisionSet?: boolean;
 }
 
 type SmartTypeListKey = keyof SmartTypeExclusions;
@@ -82,6 +88,7 @@ const smartTypeListLabels: Record<SmartTypeListKey, string> = {
 
 export function WriterInspector({
 	activeBlockType,
+	activeBlockIndex = 0,
 	documentContent,
 	documentTitle,
 	documentLayout,
@@ -95,6 +102,9 @@ export function WriterInspector({
 	onElementTypographyChange,
 	onBlockTypeChange,
 	onWorkspaceChange,
+	onStartRevisionSet,
+	onContentChange,
+	isStartingRevisionSet = false,
 }: WriterInspectorProps) {
 	const [activeTab, setActiveTab] = useState<InspectorTab>('elements');
 	const [activeSmartTypeList, setActiveSmartTypeList] = useState<SmartTypeListKey>('characters');
@@ -762,7 +772,77 @@ export function WriterInspector({
 
 						<CollapsibleSection isDark={isDark} defaultOpen={false} title="Document">
 							<div className={`mb-3 ${sectionLabelClass}`}>
-								<span>Revision Mode</span>
+								<span>Revision Sets</span>
+							</div>
+							<p className={`mb-3 text-[11px] ${isDark ? 'text-slate-400' : 'text-stone-600'}`}>
+								Starting a set snapshots the script and tracks changes with colored margin marks.
+							</p>
+							<div className="mb-3 flex flex-wrap gap-2">
+								{REVISION_SET_ORDER.map((entry) => (
+									<button
+										key={entry.color}
+										className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.14em] disabled:opacity-50 ${
+											documentWorkspace.activeRevisionSetId &&
+											documentWorkspace.revisionSets?.find((set) => set.id === documentWorkspace.activeRevisionSetId)?.color === entry.color
+												? isDark
+													? 'border-amber-500 bg-amber-950/40 text-amber-200'
+													: 'border-amber-400 bg-amber-50 text-stone-900'
+												: isDark
+													? 'border-slate-600 bg-slate-800 text-slate-300'
+													: 'border-stone-300 bg-white text-stone-600'
+										}`}
+										disabled={!onStartRevisionSet || isStartingRevisionSet}
+										type="button"
+										onClick={() => void onStartRevisionSet?.(entry.color)}
+									>
+										{entry.label}
+									</button>
+								))}
+							</div>
+							{(documentWorkspace.revisionSets ?? []).length > 0 ? (
+								<ul className={`mb-3 space-y-1 text-[11px] ${isDark ? 'text-slate-300' : 'text-stone-700'}`}>
+									{documentWorkspace.revisionSets?.map((set) => (
+										<li key={set.id}>
+											{set.label} · {new Date(set.createdAt).toLocaleDateString()}
+										</li>
+									))}
+								</ul>
+							) : null}
+							<InspectorRow isDark={isDark} label="Revision mode">
+								<YesNoToggle
+									isDark={isDark}
+									value={documentLayout.revisionModeActive}
+									onChange={(value) => onLayoutChange({ revisionModeActive: value })}
+								/>
+							</InspectorRow>
+							<InspectorRow isDark={isDark} label="Lock scene numbers">
+								<YesNoToggle
+									isDark={isDark}
+									value={sceneNumbersAreLocked(documentWorkspace.sceneNumberLocks)}
+									onChange={(value) => {
+										if (!documentContent) {
+											return;
+										}
+
+										onWorkspaceChange({
+											sceneNumberLocks: value ? lockSceneNumbers(documentContent) : {},
+										});
+									}}
+								/>
+							</InspectorRow>
+							{activeBlockType === 'scene_heading' && documentContent && onContentChange ? (
+								<InspectorRow isDark={isDark} label="Mark omitted">
+									<YesNoToggle
+										isDark={isDark}
+										value={Boolean(documentContent.content?.[activeBlockIndex]?.attrs?.omitted)}
+										onChange={(value) => {
+											onContentChange(toggleSceneOmitted(documentContent, activeBlockIndex, value));
+										}}
+									/>
+								</InspectorRow>
+							) : null}
+							<div className={`mb-3 mt-4 ${sectionLabelClass}`}>
+								<span>Legacy revision color</span>
 							</div>
 							<div className="flex flex-wrap gap-2">
 								{revisionColors.map((color) => (
@@ -784,13 +864,6 @@ export function WriterInspector({
 									</button>
 								))}
 							</div>
-							<InspectorRow isDark={isDark} label="Revision mode">
-								<YesNoToggle
-									isDark={isDark}
-									value={documentLayout.revisionModeActive}
-									onChange={(value) => onLayoutChange({ revisionModeActive: value })}
-								/>
-							</InspectorRow>
 							<InspectorRow isDark={isDark} label="Lock pages through">
 								<input
 									className={isDark ? 'w-16 rounded border border-slate-600 bg-slate-800 px-2 py-1 text-sm' : 'w-16 rounded border border-stone-300 bg-white px-2 py-1 text-sm'}
