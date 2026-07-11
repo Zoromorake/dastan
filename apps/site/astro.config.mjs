@@ -3,11 +3,14 @@ import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
 import tailwind from '@astrojs/tailwind';
 
+import cloudflare from "@astrojs/cloudflare";
+
 // DECISION: GitHub Pages vs Vercel — either static host works; interactive HeroEditor is client-side only (no server routes).
 export default defineConfig({
-	output: 'static',
-	site: 'https://dastanapp.com',
-	redirects: {
+    output: 'static',
+    site: 'https://dastanapp.com',
+
+    redirects: {
 		'/docs': '/getting-started',
 		'/docs/getting-started': '/getting-started',
 		'/docs/editor': '/editor',
@@ -19,7 +22,8 @@ export default defineConfig({
 		'/docs/why-dastan': '/why-dastan',
 		'/docs/faq-troubleshooting': '/faq-troubleshooting',
 	},
-	integrations: [
+
+    integrations: [
 		react(),
 		tailwind({ applyBaseStyles: false }),
 		starlight({
@@ -62,4 +66,6 @@ export default defineConfig({
 			],
 		}),
 	],
+
+    adapter: cloudflare()
 });
