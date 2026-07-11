@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSONContent } from '@tiptap/core';
-import { Brain, MessageSquare, MoreHorizontal, PanelRightClose, Plus, X } from 'lucide-react';
+import { Brain, Cpu, MoreHorizontal, PanelRightClose, Plus, Settings, X } from 'lucide-react';
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -8,31 +8,42 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { ScreenplayDocumentRecord, ScreenplayWorkspaceData } from '../../types';
+import type { ScreenplayDocumentRecord, ScreenplayProjectRecord, ScreenplayWorkspaceData } from '../../types';
 import { createDefaultWorkspaceData } from '../../types';
 import { useAiChat, type AiChatContextMode } from '../../hooks/useAiChat';
-import { listChatThreads } from '../../utils/ai-memory-storage';
+import { deleteChatThread, getChatThread } from '../../utils/ai-memory-storage';
 import type { AiChatThread } from '../../utils/ai-memory-storage';
 import type { CollaboratorPresence } from '@dastan/plugin-api';
 import {
-	loadInteractionMode,
 	saveInteractionMode,
 	type AiInteractionMode,
 } from '../../utils/ai-interaction-mode';
+import {
+	loadDocumentAiPrefs,
+	resolveDocumentInteractionMode,
+	saveDocumentAiPrefs,
+	clearDocumentSelectedModel,
+} from '../../utils/ai-document-prefs';
+import { AUTO_MODEL_ID } from '../../utils/ai-models';
+import { cycleInteractionMode } from '../../utils/ai-mode-config';
+import type { AiSettingsSection } from '../../utils/ai-settings-sections';
 import { formatWorkspaceSummary } from '../../utils/ai-context';
 import { toPlainTextScreenplay } from '../../utils/screenplay-text';
 import { looksLikeScreenplayText } from '../../utils/insert-screenplay-text';
 import { GENERAL_CHAT_DOCUMENT_ID } from '../../utils/user-settings';
 import { AiChatInput } from './AiChatInput';
 import { AiChatMessages } from './AiChatMessages';
-import { AiChatThreadSidebar } from './AiChatThreadSidebar';
+import { AiChatHistoryMenu } from './AiChatHistoryMenu';
 import { AiMemoryDrawer } from './AiMemoryDrawer';
 import { useDastanApp } from '../../context/DastanAppProvider';
 import { executeAiTool } from '../../utils/ai-tool-executor';
-import { formatToolPreview, type ToolInvocationPreview } from '../../utils/ai-tool-preview';
+import { formatToolPreview, type ToolPreviewState } from '../../utils/ai-tool-preview';
 import { useEditorCommands } from '../../context/EditorCommandContext';
 import { useScreenplayStore } from '../../store';
 import { getEditorTheme } from '../../utils/editor-theme';
+import { AiRulesDrawer } from './AiRulesDrawer';
+import { AiToolCallCard } from './AiToolCallCard';
+import { extractToolInvocations } from '../../utils/ai-tool-executor';
 
 const PANEL_WIDTH_STORAGE_KEY = 'dastan.ai-panel-width';
 const MIN_PANEL_WIDTH = 280;
@@ -102,7 +113,7 @@ interface AiChatPanelProps {
 	variant: 'hub' | 'editor';
 	resolvedTheme: 'light' | 'dark';
 	onClose: () => void;
-	onOpenSettings?: () => void;
+	onOpenSettings?: (section?: AiSettingsSection) => void;
 	selectionText?: string;
 	activeBlockIndex?: number | null;
 	scriptContext?: {
@@ -113,6 +124,7 @@ interface AiChatPanelProps {
 		workspace: ScreenplayWorkspaceData;
 	};
 	libraryDocuments?: ScreenplayDocumentRecord[];
+	libraryProjects?: ScreenplayProjectRecord[];
 	selectedScriptId?: string | null;
 	pendingPrompt?: string | null;
 	onPendingPromptHandled?: () => void;
@@ -132,6 +144,7 @@ export function AiChatPanel({
 	activeBlockIndex = null,
 	scriptContext,
 	libraryDocuments = [],
+	libraryProjects = [],
 	selectedScriptId = null,
 	pendingPrompt = null,
 	onPendingPromptHandled,
@@ -144,38 +157,114 @@ export function AiChatPanel({
 	const editorCommands = useEditorCommands();
 	const { entitlements, storage } = useDastanApp();
 	const currentDocument = useScreenplayStore((state) => state.currentDocument);
+	const setDocumentWorkspace = useScreenplayStore((state) => state.setDocumentWorkspace);
+	const chatInputRef = useRef<HTMLTextAreaElement>(null);
 
 	// ── Tab state ──────────────────────────────────────────────────────────────
-	const [openTabs, setOpenTabs] = useState<ChatTab[]>(() => [createChatTab()]);
+	const [openTabs, setOpenTabs] = useState<ChatTab[]>(() => [createChatTab('New Chat', true)]);
 	const [activeTabId, setActiveTabId] = useState(() => openTabs[0]?.id ?? 'initial');
 
-	const activeTab = openTabs.find((t) => t.id === activeTabId) ?? openTabs[0]!;
-	const activeThreadId = activeTab.threadId;
-	const activeChatSessionId = activeTab.sessionId;
+	const activeTab = openTabs.find((t) => t.id === activeTabId) ?? openTabs[0];
+	const activeThreadId = activeTab?.threadId ?? null;
+	const activeChatSessionId = activeTab?.sessionId ?? 'pending';
 
 	// ── Other state ────────────────────────────────────────────────────────────
 	const [threadRefreshKey, setThreadRefreshKey] = useState(0);
 	const [memoryDrawerOpen, setMemoryDrawerOpen] = useState(false);
-	const [threadSidebarOpen, setThreadSidebarOpen] = useState(false);
-	const contextMode: AiChatContextMode = variant === 'hub' ? 'general' : 'script';
+	const [rulesDrawerOpen, setRulesDrawerOpen] = useState(false);
+	const contextMode: AiChatContextMode =
+		variant === 'editor' || Boolean(selectedScriptId) ? 'script' : 'general';
+	const prefsDocumentId =
+		contextMode === 'general'
+			? GENERAL_CHAT_DOCUMENT_ID
+			: (scriptContext?.documentId ?? selectedScriptId ?? GENERAL_CHAT_DOCUMENT_ID);
 	const [interactionMode, setInteractionMode] = useState<AiInteractionMode>(() =>
-		loadInteractionMode(variant === 'editor' ? 'planner' : 'ask'),
+		resolveDocumentInteractionMode(
+			variant === 'editor' ? prefsDocumentId : null,
+			variant === 'editor' ? 'planner' : 'ask',
+		),
 	);
 	const [overrideSelectionText, setOverrideSelectionText] = useState<string | null>(null);
 	const [longConversationBannerDismissed, setLongConversationBannerDismissed] = useState(false);
 	const [autoInsertedMessageId, setAutoInsertedMessageId] = useState<string | null>(null);
-	const [pendingToolReview, setPendingToolReview] = useState<ToolInvocationPreview[] | null>(null);
+	const [pendingToolReview, setPendingToolReview] = useState<ToolPreviewState[] | null>(null);
+	const [messageToolPreviews, setMessageToolPreviews] = useState<Record<string, ToolPreviewState[]>>({});
+
+	const acceptSingleTool = useCallback(
+		async (toolId: string) => {
+			if (!editorCommands) {
+				return;
+			}
+
+			const preview = pendingToolReview?.find((item) => item.id === toolId);
+
+			if (!preview || preview.status !== 'preview') {
+				return;
+			}
+
+			if (currentDocument) {
+				await storage.versions.saveSnapshot(currentDocument);
+			}
+
+			executeAiTool(preview.toolName, preview.input, editorCommands);
+			setPendingToolReview((current) =>
+				current?.map((item) => (item.id === toolId ? { ...item, status: 'accepted' as const } : item)) ?? null,
+			);
+			setMessageToolPreviews((current) => {
+				const next = { ...current };
+
+				for (const [messageId, previews] of Object.entries(next)) {
+					next[messageId] = previews.map((item) =>
+						item.id === toolId ? { ...item, status: 'accepted' as const } : item,
+					);
+				}
+
+				return next;
+			});
+		},
+		[currentDocument, editorCommands, pendingToolReview, storage],
+	);
+
+	const rejectSingleTool = useCallback((toolId: string) => {
+		setPendingToolReview((current) => {
+			const next = current?.map((item) => (item.id === toolId ? { ...item, status: 'rejected' as const } : item)) ?? null;
+			return next?.every((item) => item.status !== 'preview') ? null : next;
+		});
+		setMessageToolPreviews((current) => {
+			const next = { ...current };
+
+			for (const [messageId, previews] of Object.entries(next)) {
+				next[messageId] = previews.map((item) =>
+					item.id === toolId ? { ...item, status: 'rejected' as const } : item,
+				);
+			}
+
+			return next;
+		});
+	}, []);
+
 	const acceptPendingTools = useCallback(async () => {
 		if (!pendingToolReview?.length || !editorCommands) {
 			return;
 		}
 
-		if (currentDocument) {
-			await storage.versions.saveSnapshot(currentDocument);
-		}
+		const pending = pendingToolReview.filter((item) => item.status === 'preview');
 
-		for (const preview of pendingToolReview) {
-			executeAiTool(preview.toolName, preview.input, editorCommands);
+		for (const preview of pending) {
+			if (currentDocument) {
+				await storage.versions.saveSnapshot(currentDocument);
+			}
+
+			try {
+				executeAiTool(preview.toolName, preview.input, editorCommands);
+			} catch {
+				setPendingToolReview((current) =>
+					current?.map((item) =>
+						item.id === preview.id ? { ...item, status: 'failed' as const } : item,
+					) ?? null,
+				);
+				return;
+			}
 		}
 
 		setPendingToolReview(null);
@@ -246,24 +335,6 @@ export function AiChatPanel({
 			? GENERAL_CHAT_DOCUMENT_ID
 			: (activeScriptContext?.documentId ?? GENERAL_CHAT_DOCUMENT_ID);
 
-	// ── Load latest thread into the initial / non-new tab ─────────────────────
-	useEffect(() => {
-		if (activeTab.threadId !== null || activeTab.isNew) {
-			return;
-		}
-
-		void listChatThreads(threadDocumentId).then((threads) => {
-			const latest = threads[0];
-			setOpenTabs((tabs) =>
-				tabs.map((t) =>
-					t.id === activeTabId
-						? { ...t, threadId: latest?.id ?? null, title: latest?.title ?? 'New Chat' }
-						: t,
-				),
-			);
-		});
-	}, [activeTabId, threadDocumentId, activeTab.isNew, activeTab.threadId]);
-
 	// ── Thread callbacks ───────────────────────────────────────────────────────
 	const handleThreadChange = useCallback(
 		(thread: AiChatThread) => {
@@ -301,6 +372,7 @@ export function AiChatPanel({
 		documentContent: activeScriptContext?.documentContent ?? null,
 		workspace: activeScriptContext?.workspace ?? createDefaultWorkspaceData(),
 		libraryDocuments,
+		libraryProjects,
 		threadId: activeThreadId,
 		roomId: collaborationRoomId,
 		activeCollaborators,
@@ -308,12 +380,19 @@ export function AiChatPanel({
 		selectionText: effectiveSelectionText ?? null,
 		activeBlockIndex,
 		activeWorkspaceTab,
-		onToolInvocations: (invocations) => {
+		onToolInvocations: (invocations, messageId) => {
 			if (invocations.length === 0) {
 				return;
 			}
 
-			setPendingToolReview(invocations.map((invocation) => formatToolPreview(invocation.toolName, invocation.input)));
+			const previews = invocations.map((invocation, index) => ({
+				...formatToolPreview(invocation.toolName, invocation.input),
+				id: `${invocation.toolName}-${index}-${Date.now()}`,
+				status: 'preview' as const,
+			}));
+
+			setPendingToolReview(previews);
+			setMessageToolPreviews((current) => ({ ...current, [messageId]: previews }));
 		},
 		onThreadChange: handleThreadChange,
 		onThreadCreated: handleThreadCreated,
@@ -325,7 +404,7 @@ export function AiChatPanel({
 		}
 	}, [chat.refreshSettings, open]);
 
-	// ── Auto-insert long-form script output in Writer mode ────────────────────
+	// ── Offer accept/reject for long-form planner script output ───────────────
 	useEffect(() => {
 		const prevStatus = prevChatStatusRef.current;
 		prevChatStatusRef.current = chat.status;
@@ -353,15 +432,21 @@ export function AiChatPanel({
 			return;
 		}
 
-		void (async () => {
-			if (currentDocument) {
-				await storage.versions.saveSnapshot(currentDocument);
-			}
+		const preview: ToolPreviewState = {
+			id: `planner-insert-${lastMessage.id}`,
+			toolName: 'planner_insert',
+			input: { text },
+			summary: text.slice(0, 2000),
+			mutatesScript: true,
+			status: 'preview',
+		};
 
-			editorCommands.insertAtCursor(text);
-			setAutoInsertedMessageId(lastMessage.id);
-		})();
-	}, [chat.messages, chat.status, currentDocument, editorCommands, interactionMode, storage, variant]);
+		setPendingToolReview([preview]);
+		setMessageToolPreviews((current) => ({
+			...current,
+			[lastMessage.id]: [preview],
+		}));
+	}, [chat.messages, chat.status, editorCommands, interactionMode, variant]);
 
 	const handleUndoAutoInsert = useCallback(() => {
 		if (!editorCommands) {
@@ -391,28 +476,64 @@ export function AiChatPanel({
 		}
 
 		const handleKeyDown = (event: KeyboardEvent) => {
-			if (event.key !== 'Escape') {
+			const mod = event.metaKey || event.ctrlKey;
+
+			if (mod && event.key === '.') {
+				event.preventDefault();
+				const canEditor = entitlements.canUseEditorAi() || chat.hasProviderConfigured;
+				setInteractionMode((current) => {
+					const next = cycleInteractionMode(current, canEditor);
+					saveInteractionMode(next);
+					if (variant === 'editor') {
+						saveDocumentAiPrefs(prefsDocumentId, { interactionMode: next });
+					}
+					return next;
+				});
 				return;
 			}
 
-			if (memoryDrawerOpen) {
-				setMemoryDrawerOpen(false);
+			if (mod && event.key.toLowerCase() === 'l' && variant === 'editor') {
+				event.preventDefault();
+				chatInputRef.current?.focus();
 				return;
 			}
 
-			if (threadSidebarOpen) {
-				setThreadSidebarOpen(false);
-				return;
-			}
+			if (event.key === 'Escape') {
+				if (chat.status === 'streaming' || chat.status === 'submitted') {
+					chat.stop();
+					return;
+				}
 
-			onClose();
+				if (rulesDrawerOpen) {
+					setRulesDrawerOpen(false);
+					return;
+				}
+
+				if (memoryDrawerOpen) {
+					setMemoryDrawerOpen(false);
+					return;
+				}
+
+				onClose();
+			}
 		};
 
 		window.addEventListener('keydown', handleKeyDown);
 		return () => {
 			window.removeEventListener('keydown', handleKeyDown);
 		};
-	}, [memoryDrawerOpen, onClose, open, threadSidebarOpen]);
+	}, [
+		chat.hasProviderConfigured,
+		chat.status,
+		chat.stop,
+		entitlements,
+		memoryDrawerOpen,
+		onClose,
+		open,
+		prefsDocumentId,
+		rulesDrawerOpen,
+		variant,
+	]);
 
 	// ── Context token estimates ────────────────────────────────────────────────
 	const selectionActive = Boolean(effectiveSelectionText?.trim());
@@ -465,94 +586,187 @@ export function AiChatPanel({
 			setPanelWidth(nextWidth);
 		};
 
-		const handleMouseUp = () => {
+		const endResize = () => {
 			if (!isResizingRef.current) {
 				return;
 			}
 
 			isResizingRef.current = false;
 			document.body.style.cursor = '';
-			document.body.style.userSelect = '';
+			document.body.style.removeProperty('user-select');
+			document.documentElement.classList.remove('ai-chat-resizing');
 			window.localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(panelWidthRef.current));
 		};
 
 		window.addEventListener('mousemove', handleMouseMove);
-		window.addEventListener('mouseup', handleMouseUp);
+		window.addEventListener('mouseup', endResize);
+		window.addEventListener('blur', endResize);
 
 		return () => {
 			window.removeEventListener('mousemove', handleMouseMove);
-			window.removeEventListener('mouseup', handleMouseUp);
+			window.removeEventListener('mouseup', endResize);
+			window.removeEventListener('blur', endResize);
+			document.body.style.removeProperty('user-select');
+			document.documentElement.classList.remove('ai-chat-resizing');
 		};
 	}, []);
 
 	// ── Tab management ─────────────────────────────────────────────────────────
+	const discardEmptyThread = useCallback(async (threadId: string | null) => {
+		if (!threadId) {
+			return;
+		}
+
+		const thread = await getChatThread(threadId);
+
+		if (thread && thread.messages.length === 0) {
+			await deleteChatThread(threadId);
+			setThreadRefreshKey((k) => k + 1);
+		}
+	}, []);
+
 	const openNewTab = useCallback(() => {
 		const tab = createChatTab('New Chat', true);
 		setOpenTabs((tabs) => [...tabs, tab]);
 		setActiveTabId(tab.id);
-		void chat.startNewThread();
-	}, [chat]);
+	}, []);
 
 	const closeTab = useCallback(
 		(tabId: string) => {
-			setOpenTabs((tabs) => {
-				if (tabs.length === 1) {
-					const tab = createChatTab('New Chat', true);
-					setActiveTabId(tab.id);
-					void chat.startNewThread();
-					return [tab];
-				}
+			const closingTab = openTabs.find((t) => t.id === tabId);
 
-				const next = tabs.filter((t) => t.id !== tabId);
+			if (closingTab?.threadId) {
+				void discardEmptyThread(closingTab.threadId);
+			}
 
-				if (tabId === activeTabId) {
-					const closedIdx = tabs.findIndex((t) => t.id === tabId);
-					const nextActive = next[Math.min(closedIdx, next.length - 1)];
-
-					if (nextActive) {
-						setActiveTabId(nextActive.id);
-
-						if (nextActive.threadId) {
-							void chat.selectThread(nextActive.threadId);
-						} else {
-							void chat.startNewThread();
-						}
-					}
-				}
-
-				return next;
-			});
-		},
-		[activeTabId, chat],
-	);
-
-	const activateChatTab = useCallback(
-		(tab: ChatTab) => {
-			setActiveTabId(tab.id);
-
-			if (tab.threadId) {
-				void chat.selectThread(tab.threadId);
+			if (openTabs.length === 1) {
+				const tab = createChatTab('New Chat', true);
+				setOpenTabs([tab]);
+				setActiveTabId(tab.id);
+				onClose();
 				return;
 			}
 
-			if (tab.isNew) {
-				void chat.startNewThread();
+			const next = openTabs.filter((t) => t.id !== tabId);
+
+			if (tabId === activeTabId) {
+				const closedIdx = openTabs.findIndex((t) => t.id === tabId);
+				const nextActive = next[Math.min(closedIdx, next.length - 1)];
+
+				if (nextActive) {
+					setActiveTabId(nextActive.id);
+				}
 			}
+
+			setOpenTabs(next);
 		},
-		[chat],
+		[activeTabId, discardEmptyThread, onClose, openTabs],
 	);
 
+	const activateChatTab = useCallback((tab: ChatTab) => {
+		setActiveTabId(tab.id);
+	}, []);
+
+	const tabStripRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const strip = tabStripRef.current;
+
+		if (!strip) {
+			return;
+		}
+
+		const activeEl = strip.querySelector<HTMLElement>('[data-active-chat-tab="true"]');
+		activeEl?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
+	}, [activeTabId, openTabs.length]);
+
+	useEffect(() => {
+		const strip = tabStripRef.current;
+
+		if (!strip) {
+			return;
+		}
+
+		const onWheel = (event: WheelEvent) => {
+			if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
+				return;
+			}
+
+			event.preventDefault();
+			strip.scrollLeft += event.deltaY;
+		};
+
+		strip.addEventListener('wheel', onWheel, { passive: false });
+		return () => strip.removeEventListener('wheel', onWheel);
+	}, [open]);
+
+	const openThreadInNewTab = useCallback((threadId: string, title: string) => {
+		const existingTab = openTabs.find((tab) => tab.threadId === threadId);
+
+		if (existingTab) {
+			setActiveTabId(existingTab.id);
+			return;
+		}
+
+		const tab: ChatTab = {
+			id: makeTabId(),
+			sessionId: globalThis.crypto.randomUUID(),
+			threadId,
+			isNew: false,
+			title,
+		};
+
+		setOpenTabs((tabs) => [...tabs, tab]);
+		setActiveTabId(tab.id);
+	}, [openTabs]);
+
+	const handleThreadDeleted = useCallback((threadId: string) => {
+		setThreadRefreshKey((k) => k + 1);
+
+		setOpenTabs((tabs) => {
+			const remaining = tabs.filter((tab) => tab.threadId !== threadId);
+
+			if (remaining.length > 0) {
+				return remaining;
+			}
+
+			// Never leave the panel with zero tabs — that unmounts it while chatOpen
+			// can stay true, so reopening appears broken until refresh.
+			return [createChatTab('New Chat', true)];
+		});
+	}, []);
+
+	useEffect(() => {
+		if (openTabs.length === 0) {
+			return;
+		}
+
+		if (!openTabs.some((tab) => tab.id === activeTabId)) {
+			setActiveTabId(openTabs[0]!.id);
+		}
+	}, [activeTabId, openTabs]);
+
+	useEffect(() => {
+		if (!open || openTabs.length > 0) {
+			return;
+		}
+
+		const tab = createChatTab('New Chat', true);
+		setOpenTabs([tab]);
+		setActiveTabId(tab.id);
+	}, [open, openTabs.length]);
+
 	// ── Early return ───────────────────────────────────────────────────────────
-	if (!open) {
+	if (!open || !activeTab) {
 		return null;
 	}
 
 	// ── Layout class ───────────────────────────────────────────────────────────
-	const isInline = variant === 'editor' && isWideLayout;
+	const isInline = isWideLayout;
 
 	const panelClass = isInline
-		? `relative z-20 flex shrink-0 flex-col overflow-hidden border-l ${editorTheme.aiPanel}`
-		: `fixed inset-x-0 top-28 bottom-0 z-50 flex w-full flex-col overflow-hidden border-t shadow-[0_-20px_60px_rgba(0,0,0,0.35)] sm:inset-x-auto sm:right-0 sm:border-l sm:border-t-0 sm:shadow-[-20px_0_60px_rgba(0,0,0,0.35)] ${editorTheme.aiPanel}`;
+		? `relative z-20 flex h-full shrink-0 flex-col overflow-hidden border-l ${editorTheme.aiPanel}`
+		: `fixed inset-0 z-50 flex flex-col overflow-hidden ${editorTheme.aiPanel}`;
 
 	const iconBtnClass = editorTheme.aiIconBtn;
 
@@ -562,77 +776,41 @@ export function AiChatPanel({
 		<aside
 			aria-label="AI chat"
 			className={panelClass}
-			style={{ width: isWideLayout ? panelWidth : '100%' }}
+			style={isInline ? { width: panelWidth } : undefined}
 		>
 			{/* Resize handle */}
 			<div
 				aria-hidden
 				className="absolute bottom-0 left-0 top-0 z-10 hidden w-1 cursor-col-resize hover:bg-amber-500/30 sm:block"
-				onMouseDown={() => {
+				onMouseDown={(event) => {
+					event.preventDefault();
 					isResizingRef.current = true;
 					document.body.style.cursor = 'col-resize';
-					document.body.style.userSelect = 'none';
+					document.documentElement.classList.add('ai-chat-resizing');
 				}}
-			/>
-
-			{/* Thread history drawer */}
-			<AiChatThreadSidebar
-				open={threadSidebarOpen}
-				documentId={threadDocumentId}
-				activeThreadId={activeThreadId}
-				isDark={isDark}
-				refreshKey={threadRefreshKey}
-				onClose={() => setThreadSidebarOpen(false)}
-				onNewThread={() => {
-					openNewTab();
-					setThreadSidebarOpen(false);
-				}}
-				onSelectThread={(threadId) => {
-					const existingTab = openTabs.find((tab) => tab.threadId === threadId);
-
-					if (existingTab) {
-						activateChatTab(existingTab);
-					} else {
-						setOpenTabs((tabs) =>
-							tabs.map((t) => (t.id === activeTabId ? { ...t, threadId, isNew: false } : t)),
-						);
-						void chat.selectThread(threadId);
-					}
-
-					setThreadSidebarOpen(false);
-				}}
-				onThreadDeleted={(threadId) => {
-					setThreadRefreshKey((k) => k + 1);
-					const tab = openTabs.find((t) => t.threadId === threadId);
-
-					if (tab) {
-						setOpenTabs((tabs) =>
-							tabs.map((t) =>
-								t.threadId === threadId ? { ...t, threadId: null, isNew: true, title: 'New Chat' } : t,
-							),
-						);
-						void chat.startNewThread();
-					}
-				}}
-				onThreadRenamed={() => setThreadRefreshKey((k) => k + 1)}
 			/>
 
 			{/* ── Chat tabs ──────────────────────────────────────────────────────── */}
-			<div className={`relative z-10 flex h-10 shrink-0 items-stretch border-b ${editorTheme.aiTabBar}`}>
-				{/* Scrollable chats */}
-				<div className="flex min-w-0 flex-1 items-stretch overflow-x-auto scrollbar-none">
+			<div className={`relative z-10 flex h-10 shrink-0 items-stretch overflow-hidden border-b ${editorTheme.aiTabBar}`}>
+				{/* Equal-width tabs; horizontal scroll only, no visible scrollbar */}
+				<div
+					ref={tabStripRef}
+					className="scrollbar-none flex h-full min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden"
+				>
 					{openTabs.map((tab) => {
 						const isActive = tab.id === activeTabId;
 
 						return (
 							<div
 								key={tab.id}
-								className={`group relative flex min-w-0 max-w-[10rem] shrink-0 items-center border-r border-border ${
+								data-active-chat-tab={isActive ? 'true' : undefined}
+								className={`group relative flex h-full w-36 shrink-0 items-center border-r border-border ${
 									isActive ? editorTheme.aiTabActive : editorTheme.aiTabIdle
 								}`}
+								title={tab.title}
 							>
 								<button
-									className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-2 text-left text-xs"
+									className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left text-xs"
 									type="button"
 									onClick={() => activateChatTab(tab)}
 								>
@@ -668,6 +846,30 @@ export function AiChatPanel({
 						<Plus size={14} />
 					</button>
 
+					<AiChatHistoryMenu
+						activeThreadId={activeThreadId}
+						documentId={threadDocumentId}
+						isDark={isDark}
+						libraryDocumentId={variant === 'editor' ? GENERAL_CHAT_DOCUMENT_ID : undefined}
+						refreshKey={threadRefreshKey}
+						scriptScopeLabel={activeScriptContext?.documentTitle ?? 'This script'}
+						triggerClassName={iconBtnClass}
+						onSelectThread={openThreadInNewTab}
+						onThreadDeleted={handleThreadDeleted}
+						onThreadRenamed={() => setThreadRefreshKey((k) => k + 1)}
+					/>
+					{onOpenSettings ? (
+						<button
+							aria-label="AI settings"
+							className={iconBtnClass}
+							title="AI settings"
+							type="button"
+							onClick={() => onOpenSettings()}
+						>
+							<Settings size={14} />
+						</button>
+					) : null}
+
 					<DropdownMenu>
 						<DropdownMenuTrigger
 							aria-label="More options"
@@ -676,14 +878,36 @@ export function AiChatPanel({
 						>
 							<MoreHorizontal size={14} />
 						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="z-[100] w-44">
-							<DropdownMenuItem
-								className="gap-2 text-xs"
-								onClick={() => setThreadSidebarOpen(true)}
-							>
-								<MessageSquare size={12} />
-								All chats
-							</DropdownMenuItem>
+						<DropdownMenuContent align="end" className="z-[100] w-52">
+							{variant === 'editor' && prefsDocumentId !== GENERAL_CHAT_DOCUMENT_ID ? (
+								<>
+									<DropdownMenuItem
+										className="gap-2 text-xs"
+										onClick={() => onOpenSettings?.('models')}
+									>
+										<Cpu size={12} />
+										<span className="min-w-0 truncate">
+											Model:{' '}
+											{chat.selectedModel === AUTO_MODEL_ID
+												? 'Auto'
+												: (chat.allModels.find((model) => model.id === chat.selectedModel)?.label ??
+													chat.selectedModel)}
+										</span>
+									</DropdownMenuItem>
+									{loadDocumentAiPrefs(prefsDocumentId).selectedModel ? (
+										<DropdownMenuItem
+											className="text-xs"
+											onClick={() => {
+												clearDocumentSelectedModel(prefsDocumentId);
+												chat.setSelectedModel(AUTO_MODEL_ID);
+											}}
+										>
+											Reset model to default
+										</DropdownMenuItem>
+									) : null}
+									<DropdownMenuSeparator />
+								</>
+							) : null}
 							<DropdownMenuItem
 								className="gap-2 text-xs"
 								onClick={() => setMemoryDrawerOpen(true)}
@@ -748,21 +972,16 @@ export function AiChatPanel({
 			) : null}
 
 			{/* Messages */}
-			<div className="relative z-0 min-h-0 flex-1 overflow-y-auto">
+			<div className="relative z-0 min-h-0 flex-1 overflow-y-auto overscroll-contain">
 				<AiChatMessages
 					messages={chat.messages}
 					status={chat.status}
 					isDark={isDark}
 					variant={variant}
 					isLongConversation={chat.isLongConversation}
-					selectedModel={chat.selectedModel}
-					availableModels={chat.availableModels}
 					firstLibraryTitle={firstLibraryTitle}
 					onRegenerate={() => {
 						void chat.regenerate();
-					}}
-					onRegenerateWithModel={(modelId) => {
-						void chat.regenerateWithModel(modelId);
 					}}
 					onEditMessage={chat.editMessage}
 					onStarterClick={(prompt) => {
@@ -794,6 +1013,9 @@ export function AiChatPanel({
 					memorySuggestions={chat.memorySuggestions}
 					onApproveMemory={chat.approveMemorySuggestion}
 					onDismissMemory={chat.dismissMemorySuggestion}
+					messageToolPreviews={messageToolPreviews}
+					onAcceptTool={(toolId) => void acceptSingleTool(toolId)}
+					onRejectTool={rejectSingleTool}
 				/>
 			</div>
 
@@ -803,36 +1025,48 @@ export function AiChatPanel({
 				</div>
 			) : null}
 
-			{pendingToolReview && pendingToolReview.length > 0 ? (
-				<div className={`border-t px-3 py-3 text-xs ${editorTheme.border}`}>
-					<p className={`mb-2 font-medium ${editorTheme.statusText}`}>Review AI changes</p>
-					<div className="mb-3 max-h-40 space-y-2 overflow-y-auto">
-						{pendingToolReview.map((preview, index) => (
-							<pre
-								key={`${preview.toolName}-${index}`}
-								className={`whitespace-pre-wrap rounded-lg border p-2 font-mono text-[11px] leading-relaxed ${editorTheme.statusPill}`}
+			{pendingToolReview && pendingToolReview.filter((item) => item.status === 'preview').length > 0 ? (
+				<div
+					className={`sticky bottom-0 z-10 border-t px-3 py-2 text-xs backdrop-blur-sm ${editorTheme.border} ${editorTheme.aiInputShell}`}
+				>
+					<div className="flex flex-wrap items-center justify-between gap-2">
+						<p className={editorTheme.statusText}>
+							{pendingToolReview.filter((item) => item.status === 'preview').length} changes pending
+						</p>
+						<div className="flex gap-2">
+							<button
+								className={`text-[10px] uppercase tracking-[0.12em] underline-offset-2 hover:underline ${editorTheme.statusText}`}
+								type="button"
+								onClick={() => setPendingToolReview(null)}
 							>
-								{preview.summary}
-							</pre>
-						))}
+								Review
+							</button>
+							<button
+								className={`rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.12em] ${editorTheme.accentPill}`}
+								type="button"
+								onClick={() => void acceptPendingTools()}
+							>
+								Accept all
+							</button>
+							<button
+								className={`rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.12em] ${editorTheme.statusPill}`}
+								type="button"
+								onClick={rejectPendingTools}
+							>
+								Reject all
+							</button>
+						</div>
 					</div>
-					<div className="flex gap-2">
-						<button
-							className={`rounded-md border px-3 py-1.5 text-[11px] font-medium ${editorTheme.accentPill}`}
-							type="button"
-							onClick={() => {
-								void acceptPendingTools();
-							}}
-						>
-							Accept
-						</button>
-						<button
-							className={`rounded-md border px-3 py-1.5 text-[11px] ${editorTheme.statusPill}`}
-							type="button"
-							onClick={rejectPendingTools}
-						>
-							Reject
-						</button>
+					<div className="mt-2 max-h-36 space-y-2 overflow-y-auto">
+						{pendingToolReview.map((preview) => (
+							<AiToolCallCard
+								key={preview.id}
+								isDark={isDark}
+								preview={preview}
+								onAccept={() => void acceptSingleTool(preview.id)}
+								onReject={() => rejectSingleTool(preview.id)}
+							/>
+						))}
 					</div>
 				</div>
 			) : null}
@@ -840,6 +1074,7 @@ export function AiChatPanel({
 			{/* Input */}
 			<div className="relative z-0 shrink-0">
 				<AiChatInput
+					inputRef={chatInputRef}
 					isDark={isDark}
 					contextMode={contextMode}
 					interactionMode={interactionMode}
@@ -856,23 +1091,47 @@ export function AiChatPanel({
 					creditsRemaining={chat.creditsRemaining}
 					includeScriptContext={chat.effectiveIncludeScriptContext}
 					includeWorkspaceContext={chat.includeWorkspaceContext}
+					scriptContextSections={chat.scriptContextSections}
 					selectionActive={selectionActive}
-					memoriesCount={chat.memories.length}
+					selectionText={effectiveSelectionText}
+					activeBlockIndex={activeBlockIndex}
+					documentContent={activeScriptContext?.documentContent ?? null}
+					workspace={activeScriptContext?.workspace ?? createDefaultWorkspaceData()}
+					globalRules={chat.settings.globalRules}
+					documentRules={chat.documentRules}
+					memories={chat.memories}
+					codexItems={chat.codexItems}
+					memoriesCount={chat.includedMemoriesCount}
+					suggestedMemoriesCount={chat.suggestedMemoriesCount}
 					globalRulesActive={chat.settings.globalRules.trim().length > 0}
-					scriptCharCount={scriptCharCount}
-					workspaceSummaryCharCount={workspaceSummaryCharCount}
+					documentRulesActive={chat.documentRules.length > 0}
 					onInteractionModeChange={(mode) => {
 						setInteractionMode(mode);
 						saveInteractionMode(mode);
+						saveDocumentAiPrefs(prefsDocumentId, { interactionMode: mode });
 					}}
-					onToggleScript={() => chat.setIncludeScriptContext(!chat.includeScriptContext)}
-					onToggleWorkspace={() => chat.setIncludeWorkspaceContext(!chat.includeWorkspaceContext)}
 					onClearSelection={() => setOverrideSelectionText('')}
 					onModelChange={chat.setSelectedModel}
+					onIncludeScriptChange={chat.setIncludeScriptContext}
+					onIncludeWorkspaceChange={chat.setIncludeWorkspaceContext}
+					onScriptSectionChange={chat.setScriptContextSections}
+					onOpenSettings={onOpenSettings}
+					onOpenMemories={() => setMemoryDrawerOpen(true)}
+					onOpenRules={() => setRulesDrawerOpen(true)}
 					onSubmit={chat.submitMessage}
 					onStop={chat.stop}
 				/>
 			</div>
+
+			<AiRulesDrawer
+				documentRules={activeScriptContext?.workspace.aiWriterRules ?? ''}
+				isDark={isDark}
+				open={rulesDrawerOpen}
+				onClose={() => setRulesDrawerOpen(false)}
+				onDocumentRulesChange={(rules) => {
+					setDocumentWorkspace({ aiWriterRules: rules });
+				}}
+			/>
 
 			{/* Memory drawer */}
 			<AiMemoryDrawer

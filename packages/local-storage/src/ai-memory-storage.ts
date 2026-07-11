@@ -1,4 +1,4 @@
-import { openDB } from 'idb';
+import { getDatabase } from './screenplay-storage';
 
 export interface AiMemory {
 	id: string;
@@ -7,6 +7,8 @@ export interface AiMemory {
 	projectId?: string;
 	content: string;
 	pinned: boolean;
+	/** suggested = pending review; approved = user-created or approved suggestion */
+	status?: 'suggested' | 'approved';
 	createdAt: string;
 	updatedAt: string;
 }
@@ -16,6 +18,18 @@ export interface AiChatMessage {
 	role: 'user' | 'assistant' | 'system';
 	content: string;
 	createdAt: string;
+	/** Resolved model id that generated this assistant message */
+	modelId?: string;
+	/** User-facing selection at send time (`auto` or a specific model id) */
+	modelSelection?: string;
+	/** Compact context manifest captured when this assistant message was generated */
+	contextManifest?: {
+		sections: Array<{ id: string; charCount: number; detail?: string[] }>;
+		totalCharCount: number;
+		totalTokenEstimate: number;
+		budgetTokens: number;
+		capturedAt: string;
+	};
 }
 
 export interface AiChatThread {
@@ -31,27 +45,8 @@ export interface AiChatThread {
 	updatedAt: string;
 }
 
-const DATABASE_NAME = 'dastan';
-const DATABASE_VERSION = 4;
-
-async function getAiDatabase() {
-	return openDB(DATABASE_NAME, DATABASE_VERSION, {
-		upgrade(database, oldVersion) {
-			if (oldVersion < 4) {
-				if (!database.objectStoreNames.contains('ai_memories')) {
-					database.createObjectStore('ai_memories');
-				}
-
-				if (!database.objectStoreNames.contains('chat_threads')) {
-					database.createObjectStore('chat_threads');
-				}
-			}
-		},
-	});
-}
-
 export async function listAiMemories(documentId?: string, projectId?: string): Promise<AiMemory[]> {
-	const database = await getAiDatabase();
+	const database = await getDatabase();
 	const memories = (await database.getAll('ai_memories')) as AiMemory[];
 
 	return memories
@@ -74,12 +69,12 @@ export async function listAiMemories(documentId?: string, projectId?: string): P
 }
 
 export async function saveAiMemory(memory: AiMemory): Promise<void> {
-	const database = await getAiDatabase();
+	const database = await getDatabase();
 	await database.put('ai_memories', memory, memory.id);
 }
 
 export async function deleteAiMemory(memoryId: string): Promise<void> {
-	const database = await getAiDatabase();
+	const database = await getDatabase();
 	await database.delete('ai_memories', memoryId);
 }
 
@@ -89,6 +84,7 @@ export async function createAiMemory(input: {
 	projectId?: string;
 	content: string;
 	pinned?: boolean;
+	status?: 'suggested' | 'approved';
 }): Promise<AiMemory> {
 	const now = new Date().toISOString();
 	const memory: AiMemory = {
@@ -97,7 +93,8 @@ export async function createAiMemory(input: {
 		documentId: input.documentId,
 		projectId: input.projectId,
 		content: input.content.trim(),
-		pinned: input.pinned ?? true,
+		pinned: input.pinned ?? input.status !== 'suggested',
+		status: input.status ?? 'approved',
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -107,7 +104,7 @@ export async function createAiMemory(input: {
 }
 
 export async function listChatThreads(documentId: string): Promise<AiChatThread[]> {
-	const database = await getAiDatabase();
+	const database = await getDatabase();
 	const threads = (await database.getAll('chat_threads')) as AiChatThread[];
 
 	return threads
@@ -115,13 +112,23 @@ export async function listChatThreads(documentId: string): Promise<AiChatThread[
 		.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
+export async function listChatThreadsForDocumentIds(documentIds: string[]): Promise<AiChatThread[]> {
+	const allowed = new Set(documentIds);
+	const database = await getDatabase();
+	const threads = (await database.getAll('chat_threads')) as AiChatThread[];
+
+	return threads
+		.filter((thread) => allowed.has(thread.documentId))
+		.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
 export async function getChatThread(threadId: string): Promise<AiChatThread | undefined> {
-	const database = await getAiDatabase();
+	const database = await getDatabase();
 	return (await database.get('chat_threads', threadId)) as AiChatThread | undefined;
 }
 
 export async function saveChatThread(thread: AiChatThread): Promise<AiChatThread> {
-	const database = await getAiDatabase();
+	const database = await getDatabase();
 	const savedThread = {
 		...thread,
 		updatedAt: new Date().toISOString(),
@@ -132,7 +139,7 @@ export async function saveChatThread(thread: AiChatThread): Promise<AiChatThread
 }
 
 export async function deleteChatThread(threadId: string): Promise<void> {
-	const database = await getAiDatabase();
+	const database = await getDatabase();
 	await database.delete('chat_threads', threadId);
 }
 

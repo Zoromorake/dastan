@@ -1,34 +1,39 @@
 ---
+import { repoBlobUrl } from '../../lib/site-config';
 import type { SiteLinks } from '../../lib/types';
 
 interface Props {
 	links: SiteLinks;
+	legalName: string;
 }
 
-const { links } = Astro.props;
+const { links, legalName } = Astro.props;
 const year = new Date().getFullYear();
+const licenseUrl = repoBlobUrl(links.repoUrl, 'LICENSE');
+const trademarkUrl = repoBlobUrl(links.repoUrl, 'TRADEMARK.md');
 ---
 
 <footer class="site-footer reveal">
 	<div class="site-footer__inner">
 		<p class="site-footer__brand font-screenplay">Dastan</p>
 		<nav class="site-footer__nav" aria-label="Footer">
+			<a href="/about">About</a>
 			<a href={links.repoUrl} rel="noreferrer" target="_blank">GitHub</a>
 			<a href={links.docsUrl}>Documentation</a>
-			<a href="https://github.com/Zoromorake/dastan/blob/main/LICENSE">License (AGPL-3.0)</a>
+			<a href={licenseUrl} rel="noreferrer" target="_blank">License (AGPL-3.0)</a>
 			<a href={`mailto:${links.contactEmail}`}>{links.contactEmail}</a>
 		</nav>
 		<p class="site-footer__note">
-			“Dastan” is a trademark of the project owners. See <a href="/TRADEMARK.md">TRADEMARK.md</a> in the repository.
+			“Dastan” is a trademark of the project owners. See <a href={trademarkUrl} rel="noreferrer" target="_blank">TRADEMARK.md</a> in the repository.
 		</p>
-		<p class="site-footer__copy">© {year} Dastan contributors</p>
+		<p class="site-footer__copy">© {year} {legalName} and Dastan contributors</p>
 	</div>
 </footer>
 
 <style>
 	.site-footer {
 		padding: 3rem 1.25rem 4rem;
-		border-top: 1px solid #292524;
+		border-top: 1px solid #2a3158;
 		margin-top: 2rem;
 	}
 

@@ -1,12 +1,22 @@
 const FALLBACK_STARS = 0;
 
+/** Legal name for copyright line — set once here. */
+export const LEGAL_NAME = 'Arif Qasim';
+
+/** Show GitHub star count only at or above this threshold. */
+export const GITHUB_STARS_THRESHOLD = 5;
+
 export function getSiteConfig() {
-	const appUrl = import.meta.env.PUBLIC_DASTAN_APP_URL ?? 'https://app.dastan.app';
+	const appUrl = import.meta.env.PUBLIC_DASTAN_APP_URL ?? 'https://dastanapp.com';
 	const repoUrl = import.meta.env.PUBLIC_DASTAN_REPO_URL ?? 'https://github.com/Zoromorake/dastan';
 	const docsUrl = import.meta.env.PUBLIC_DASTAN_DOCS_URL ?? '/docs';
-	const contactEmail = import.meta.env.PUBLIC_DASTAN_CONTACT_EMAIL ?? 'hello@dastan.app';
+	const contactEmail = import.meta.env.PUBLIC_DASTAN_CONTACT_EMAIL ?? 'hello@dastanapp.com';
 
-	return { appUrl, repoUrl, docsUrl, contactEmail };
+	return { appUrl, repoUrl, docsUrl, contactEmail, legalName: LEGAL_NAME };
+}
+
+export function repoBlobUrl(repoUrl: string, filePath: string): string {
+	return `${repoUrl.replace(/\/$/u, '')}/blob/main/${filePath}`;
 }
 
 export async function fetchGitHubStars(repoUrl: string): Promise<number> {

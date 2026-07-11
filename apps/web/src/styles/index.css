@@ -16,6 +16,72 @@
 	animation: workspace-panel-in 0.2s ease-out;
 }
 
+/* Hide scrollbars but keep overflow scrolling (chat tab strip, etc.) */
+.scrollbar-none {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+	display: none;
+}
+
+/* Chat message bodies: isolate selection so ancestor user-select rules can't
+   force the anchor to the start of the block (WebKit/Blink quirk). */
+.ai-chat-selectable {
+	cursor: text;
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+.ai-chat-selectable * {
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+.ai-chat-md-code {
+	border-radius: 0.25rem;
+	padding: 0.125rem 0.25rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 0.85em;
+	background: rgb(0 0 0 / 0.06);
+}
+
+[data-ai-chat-dark='true'] .ai-chat-md-code {
+	background: rgb(255 255 255 / 0.1);
+	color: rgb(253 230 138);
+}
+
+.ai-chat-md-pre {
+	margin-block: 0.5rem;
+	overflow-x: auto;
+	border-radius: 0.5rem;
+	padding: 0.75rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	background: rgb(0 0 0 / 0.06);
+}
+
+[data-ai-chat-dark='true'] .ai-chat-md-pre {
+	background: rgb(0 0 0 / 0.3);
+	color: rgb(226 232 240);
+}
+
+.ai-chat-chrome,
+.ai-chat-selectable .ai-chat-chrome,
+.ai-chat-selectable .ai-chat-chrome * {
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+.ai-chat-resizing,
+.ai-chat-resizing * {
+	cursor: col-resize !important;
+	-webkit-user-select: none !important;
+	user-select: none !important;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -29,48 +95,60 @@ body,
 
 @layer base {
   :root {
-    --background: 0 0% 98%;
-    --foreground: 240 6% 10%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 6% 10%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 6% 10%;
-    --primary: 38 92% 50%;
-    --primary-foreground: 240 6% 10%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 46%;
-    --accent: 240 5% 96%;
-    --accent-foreground: 240 6% 10%;
+    --font-persian: 'Noto Naskh Arabic', 'Geeza Pro', serif;
+    --font-screenplay: 'Courier Prime', 'Courier New', Courier, monospace;
+    --background: 40 20% 97%;
+    --foreground: 228 20% 12%;
+    --card: 40 33% 99%;
+    --card-foreground: 228 20% 12%;
+    --popover: 40 33% 99%;
+    --popover-foreground: 228 20% 12%;
+    --primary: 46 67% 47%;
+    --primary-foreground: 228 57% 10%;
+    --secondary: 40 18% 93%;
+    --secondary-foreground: 228 20% 12%;
+    --muted: 40 16% 92%;
+    --muted-foreground: 228 8% 42%;
+    --accent: 40 22% 94%;
+    --accent-foreground: 228 20% 12%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 38 92% 50%;
+    --border: 40 14% 86%;
+    --input: 40 14% 86%;
+    --ring: 46 67% 47%;
+    --gold: 46 67% 47%;
+    --paper: 43 33% 93%;
+    --paper-bright: 43 44% 96%;
+    --ink: 228 57% 10%;
+    --ink-soft: 228 47% 13%;
     --radius: 0.625rem;
   }
 
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 0 0% 98%;
-    --card: 217 33% 17%;
-    --card-foreground: 0 0% 98%;
-    --popover: 217 33% 17%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 38 92% 50%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 0 0% 98%;
+    --background: 228 57% 10%;
+    --foreground: 40 6% 91%;
+    --card: 228 47% 13%;
+    --card-foreground: 40 6% 91%;
+    --popover: 228 47% 13%;
+    --popover-foreground: 40 6% 91%;
+    --primary: 46 67% 47%;
+    --primary-foreground: 228 57% 10%;
+    --secondary: 228 44% 15%;
+    --secondary-foreground: 40 6% 91%;
+    --muted: 228 44% 15%;
+    --muted-foreground: 228 12% 68%;
+    --accent: 228 40% 18%;
+    --accent-foreground: 40 6% 91%;
     --destructive: 0 63% 45%;
     --destructive-foreground: 0 0% 98%;
-    --border: 215 28% 22%;
-    --input: 215 28% 22%;
-    --ring: 38 92% 50%;
+    --border: 228 35% 25%;
+    --input: 228 35% 25%;
+    --ring: 46 67% 47%;
+    --gold: 46 67% 47%;
+    --paper: 228 40% 16%;
+    --paper-bright: 228 36% 18%;
+    --ink: 228 57% 10%;
+    --ink-soft: 228 47% 13%;
   }
 
   html {

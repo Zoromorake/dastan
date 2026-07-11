@@ -69,4 +69,4 @@ Ensure a revision set is **started** (creates baseline snapshot) and **Show chan
 
 ## Still stuck?
 
-Open an issue on GitHub or email `hello@dastan.app` <!-- DASTAN_CONTACT_EMAIL --> with browser, steps, and whether you use BYOK or local-only mode.
+Open an issue on GitHub or email the contact address listed on the project homepage with browser, steps, and whether you use BYOK or local-only mode.

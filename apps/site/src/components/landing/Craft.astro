@@ -1,4 +1,6 @@
 ---
+import { Fragment } from 'astro/jsx-runtime';
+import CapturePlaceholder from '../CapturePlaceholder.astro';
 import type { SiteLinks } from '../../lib/types';
 
 interface Props {
@@ -13,21 +15,22 @@ const cells = [
 		title: 'Tab / Enter flow',
 		caption: 'Keyboard-first element cycling',
 		href: `${links.docsUrl}/editor/`,
-		slot: 'ARIF: capture editor with element picker or Tab cycle visible, light paper on dark shell',
+		capture:
+			'ARIF: capture editor with element picker or Tab cycle visible, light paper on dark shell',
 	},
 	{
 		accent: 'var(--revision-blue)',
 		title: 'SmartType',
 		caption: 'Consistent character and location names',
 		href: `${links.docsUrl}/editor/`,
-		slot: 'ARIF: capture SmartType dropdown under a character cue',
+		capture: 'ARIF: capture SmartType dropdown under a character cue',
 	},
 	{
 		accent: 'var(--revision-pink)',
 		title: 'Beat board',
 		caption: 'Plan beside the draft',
 		href: `${links.docsUrl}/story-tools/`,
-		slot: 'ARIF: capture Develop → Beat Board with 3+ cards',
+		capture: 'ARIF: capture Develop → Beat Board with 3+ cards',
 		wide: true,
 	},
 	{
@@ -35,28 +38,28 @@ const cells = [
 		title: 'Structure Lines',
 		caption: 'Colored beat ribbons in the gutter',
 		href: `${links.docsUrl}/story-tools/`,
-		slot: 'ARIF: capture editor with structure lines on + navigator dots',
+		capture: 'ARIF: capture editor with structure lines on + navigator dots',
 	},
 	{
 		accent: 'var(--revision-goldenrod)',
 		title: 'Focus & typewriter',
 		caption: 'Distraction-free drafting modes',
 		href: `${links.docsUrl}/editor/`,
-		slot: 'ARIF: capture focus mode or typewriter mode indicator in top bar',
+		capture: 'ARIF: capture focus mode or typewriter mode indicator in top bar',
 	},
 	{
 		accent: 'var(--revision-white)',
 		title: 'Version history',
 		caption: 'Per-passage restore from diffs',
 		href: `${links.docsUrl}/your-files/`,
-		slot: 'ARIF: capture version history diff with restore control',
+		capture: 'ARIF: capture version history diff with restore control',
 		wide: true,
 	},
 ];
 ---
 
 <section class="craft reveal" id="craft">
-	<p class="slugline section-slug">INT. THE WRITING ROOM — DAY</p>
+	<p class="slugline section-slug">INT. THE WRITING ROOM - DAY</p>
 	<h2 class="section-title">Craft that stays out of your way</h2>
 	<div class="craft__bento">
 		{
@@ -66,8 +69,9 @@ const cells = [
 					href={cell.href}
 					style={`--accent: ${cell.accent}`}
 				>
-					<div class="craft__crop" aria-hidden="true">
-						<span>{cell.slot}</span>
+					<Fragment set:html={`<!-- ${cell.capture} -->`} />
+					<div class="craft__crop">
+						<CapturePlaceholder name={cell.title} />
 					</div>
 					<div>
 						<h3>{cell.title}</h3>
@@ -98,7 +102,7 @@ const cells = [
 		gap: 0.75rem;
 		padding: 0.85rem;
 		border-radius: 0.5rem;
-		border: 1px solid #292524;
+		border: 1px solid #2a3158;
 		background: var(--ink-soft);
 		text-decoration: none;
 		color: inherit;
@@ -131,16 +135,9 @@ const cells = [
 	.craft__crop {
 		aspect-ratio: 16 / 10;
 		border-radius: 0.35rem;
-		border: 1px dashed #57534e;
+		border: 1px solid #2a3158;
 		background: var(--ink-muted);
-		display: grid;
-		place-items: center;
-		padding: 0.75rem;
-		text-align: center;
-		font-size: 0.62rem;
-		color: #78716c;
-		font-family: 'Courier Prime', monospace;
-		line-height: 1.35;
+		overflow: hidden;
 	}
 
 	.craft__cell h3 {

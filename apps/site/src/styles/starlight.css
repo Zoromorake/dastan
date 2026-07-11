@@ -1,17 +1,22 @@
 /* Starlight theme overrides — match landing identity without forking the theme. */
 
 :root {
-	--sl-color-accent-low: #1c1916;
-	--sl-color-accent: #ca8a04;
+	--ink: #0b1026;
+	--ink-soft: #0f1535;
+	--ink-muted: #151c3d;
+	--gold: #c9a227;
+	--revision-blue: #2563eb;
+	--sl-color-accent-low: #151c3d;
+	--sl-color-accent: #c9a227;
 	--sl-color-accent-high: #f4f0e6;
 	--sl-color-white: #f4f0e6;
 	--sl-color-gray-1: #e7e5e4;
 	--sl-color-gray-2: #d6d3d1;
 	--sl-color-gray-3: #a8a29e;
 	--sl-color-gray-4: #78716c;
-	--sl-color-gray-5: #292524;
-	--sl-color-gray-6: #1c1916;
-	--sl-color-black: #0c0b0a;
+	--sl-color-gray-5: #2a3158;
+	--sl-color-gray-6: #151c3d;
+	--sl-color-black: #0b1026;
 	--sl-font: Inter, system-ui, sans-serif;
 	--sl-font-mono: 'Courier Prime', Courier New, monospace;
 	--sl-text-xs: 0.8125rem;
@@ -28,11 +33,11 @@
 
 :root[data-theme='dark'],
 [data-theme='dark'] {
-	--sl-color-bg: #0c0b0a;
-	--sl-color-bg-nav: #141210;
-	--sl-color-bg-sidebar: #141210;
-	--sl-color-hairline: #292524;
-	--sl-color-hairline-shade: #1c1916;
+	--sl-color-bg: #0b1026;
+	--sl-color-bg-nav: #0f1535;
+	--sl-color-bg-sidebar: #0f1535;
+	--sl-color-hairline: #2a3158;
+	--sl-color-hairline-shade: #151c3d;
 }
 
 .sl-markdown-content code:not(:where(.not-content *)) {
@@ -87,4 +92,15 @@
 
 .why-aside {
 	border-left: 3px solid var(--revision-blue);
+}
+
+.docs-etymology {
+	margin: 0 0 1.25rem;
+	font-size: 0.85rem;
+	letter-spacing: 0.04em;
+	color: var(--sl-color-gray-3);
+}
+
+.docs-etymology__persian {
+	font-family: 'Noto Naskh Arabic', 'Geeza Pro', serif;
 }

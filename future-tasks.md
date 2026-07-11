@@ -8,10 +8,7 @@ Deferred work tracked from upgrade passes. Not scheduled — revisit when priori
 
 Remaining:
 
-- Manual deploy to GitHub Pages or Vercel (`// DECISION:` in `apps/site/README.md`)
-- Replace `<!-- ARIF: ... -->` capture slots on landing (hero video, craft bento, production crop)
-- Lighthouse audit on production deploy (local preview Jul 2026: **99** performance, 100 a11y/SEO/BP)
-- Set `PUBLIC_*` and `VITE_DASTAN_DOCS_URL` on deployed hosts
+- Replace remaining `<!-- ARIF: ... -->` capture slots with real screenshots (hero video `public/hero-demo.webm`, craft bento, production crop) — placeholder cards ship in Pass 4
 
 ## True WYSIWYG screenplay pagination
 
@@ -28,17 +25,6 @@ When implementing:
 
 **Partially done; general framework deferred.** Scene-scoped context (current scene, neighbors, rolling digest) is implemented in `ai-context-script.ts`. A reusable token-budget framework across all context surfaces is explicitly out of scope for the initial pass.
 
-## CLA legal entity
-
-**Before external contributors:** Replace placeholders in [CLA.md](CLA.md):
-
-- `[JURISDICTION]` — governing law for the Harmony CAA
-- Confirm **Us (assignee)** legal entity name for copyright assignment (dual licensing requires a rights holder)
-
-## Git history — black panther PDF
-
-If `black-panther-2018-2.pdf` was ever committed, run `git filter-repo` (or BFG) to purge it before any public push. The file is gitignored at repo root for local manual testing only.
-
 ## Production revision — page locking and colored pages
 
 **Deferred.** Revision mode uses colored borders and margin asterisks without true pagination. Full colored production pages and page locking require true WYSIWYG pagination (see above).
@@ -54,3 +40,21 @@ If `black-panther-2018-2.pdf` was ever committed, run `git filter-repo` (or BFG)
 ## CI / deploy workflows
 
 Re-enable `.github/workflows/ci.yml` and `deploy-supabase.yml` push triggers when the project is ready for automated gates. `SUPABASE_PROJECT_REF` must be set as a repository secret for deploy. `apps/site` build is in CI (`npm run site:build`).
+
+## Pass 6 — AI Panel Overhaul (Jul 2026)
+
+**Shipped (Phases 1–6 core + deferred follow-ups).** Mode/model dropdown toolbar, context meter + inspector with script-section toggles (including opening/ending), per-document prefs, slash commands in settings, rules drawer, memory drawer with suggested review, settings AI sections with deep links, batch + inline tool review cards, library/script history separator, per-script model overflow action, keyword-ranked approved memories in context, Cmd/Ctrl+. mode cycle, Cmd/Ctrl+L focus input, Esc stops streaming.
+
+Still deferred:
+
+- **ScreenplayBlock rendering in AI replies** — Courier insert-via-preview flow not built; plain markdown + insert actions remain
+- **Streaming tool activity line** — inline cards appear after completion; live per-tool status during stream not built
+
+## Pass 5 — Web app UX (Phases 1–6, Jul 2026)
+
+**Shipped.** Lapis/gold palette, dark page glow, khatam (hub divider + empty mark only), etymology in settings, slate-first hub with poster cards (including upload), Today panel with deterministic briefing + optional AI line, Development Room guide, ephemeral-until-touched drafts with 48h sweep, untitled dedupe, Cmd/Ctrl+K palette (hub + editor), FADE OUT celebration. Removed dead `HubScriptsPanel` / `ScriptCard`.
+
+Deferred:
+
+- **Automated WCAG token audit** — Token pairs tuned manually; add scripted contrast check in CI if palette changes often
+- **Ephemeral tradeoff** — New scratch/guide scripts stay in memory until first meaningful touch; navigating away discards untouched blanks silently (logged here because full create-path refactor was avoided)

@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { memo, useCallback, useState, type ReactNode } from 'react';
 import type { UIMessage } from 'ai';
 import { Bookmark, Check, Copy, CornerDownLeft, Pencil, Replace, RotateCcw, Undo2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { AUTO_MODEL_ID } from '../../utils/ai-models';
+import { resolveModelOption } from '../../utils/ai-models';
 import type { AiMemory } from '../../utils/ai-memory-storage';
 import type { MemorySuggestion } from '../../hooks/useAiChat';
+import { AiToolCallCard } from './AiToolCallCard';
+import type { ToolPreviewState } from '../../utils/ai-tool-preview';
 
 interface StarterPrompt {
 	label: string;
@@ -17,29 +19,90 @@ interface AiChatMessagesProps {
 	isDark: boolean;
 	variant: 'hub' | 'editor';
 	isLongConversation?: boolean;
-	selectedModel: string;
-	availableModels: Array<{ id: string; label: string }>;
 	firstLibraryTitle?: string;
 	onRegenerate?: () => void;
-	onRegenerateWithModel?: (modelId: string) => void;
 	onEditMessage?: (messageId: string, newText: string) => Promise<boolean>;
 	onStarterClick?: (text: string) => void;
 	selectionActive?: boolean;
 	onInsertText?: (text: string) => void;
 	onReplaceSelection?: (text: string) => void;
-	/** Id of the assistant message that was automatically inserted into the script (Writer mode). */
 	autoInsertedMessageId?: string | null;
 	onUndoAutoInsert?: () => void;
 	memorySuggestions?: MemorySuggestion[];
 	onApproveMemory?: (id: string, scope: AiMemory['scope']) => Promise<void>;
 	onDismissMemory?: (id: string) => void;
+	messageToolPreviews?: Record<string, ToolPreviewState[]>;
+	onAcceptTool?: (toolId: string) => void;
+	onRejectTool?: (toolId: string) => void;
 }
+
+/** Stable across renders — recreating these remounts markdown DOM and kills text selection. */
+const markdownComponents = {
+	p: ({ children }: { children?: ReactNode }) => (
+		<p className="ai-chat-md-p my-2 leading-6 first:mt-0 last:mb-0">{children}</p>
+	),
+	ul: ({ children }: { children?: ReactNode }) => (
+		<ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>
+	),
+	ol: ({ children }: { children?: ReactNode }) => (
+		<ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>
+	),
+	li: ({ children }: { children?: ReactNode }) => <li className="leading-6">{children}</li>,
+	strong: ({ children }: { children?: ReactNode }) => <strong className="font-semibold">{children}</strong>,
+	em: ({ children }: { children?: ReactNode }) => <em className="italic">{children}</em>,
+	code: ({ children }: { children?: ReactNode }) => <code className="ai-chat-md-code">{children}</code>,
+	pre: ({ children }: { children?: ReactNode }) => <pre className="ai-chat-md-pre">{children}</pre>,
+	h1: ({ children }: { children?: ReactNode }) => <h3 className="mt-3 text-base font-semibold">{children}</h3>,
+	h2: ({ children }: { children?: ReactNode }) => <h4 className="mt-2 text-sm font-semibold">{children}</h4>,
+	h3: ({ children }: { children?: ReactNode }) => <h5 className="mt-2 text-sm font-medium">{children}</h5>,
+};
+
+const AssistantMarkdown = memo(function AssistantMarkdown({ text }: { text: string }) {
+	return <ReactMarkdown components={markdownComponents}>{text}</ReactMarkdown>;
+});
 
 function getMessageText(message: UIMessage): string {
 	return message.parts
 		.filter((part) => part.type === 'text')
 		.map((part) => part.text)
 		.join('');
+}
+
+function formatUsedModelLabel(message: UIMessage): string | null {
+	const meta = message as UIMessage & { modelId?: string; modelSelection?: string };
+	const resolvedId = meta.modelId?.trim();
+
+	if (!resolvedId) {
+		return null;
+	}
+
+	return resolveModelOption(resolvedId)?.label ?? resolvedId;
+}
+
+function ThinkingDots({ isDark }: { isDark: boolean }) {
+	return (
+		<span aria-label="Assistant is thinking" className="inline-flex items-center gap-1.5 py-1">
+			{[0, 1, 2].map((index) => (
+				<span
+					key={index}
+					className={`size-1.5 rounded-full animate-bounce ${isDark ? 'bg-slate-400' : 'bg-stone-400'}`}
+					style={{ animationDelay: `${index * 150}ms` }}
+				/>
+			))}
+		</span>
+	);
+}
+
+function isAwaitingAssistantReply(
+	messages: UIMessage[],
+	status: AiChatMessagesProps['status'],
+): boolean {
+	if (status !== 'submitted' && status !== 'streaming') {
+		return false;
+	}
+
+	const lastMessage = messages.at(-1);
+	return !lastMessage || lastMessage.role === 'user';
 }
 
 function getStarterPrompts(variant: 'hub' | 'editor', firstLibraryTitle?: string): StarterPrompt[] {
@@ -85,7 +148,7 @@ function MemorySuggestionCard({ suggestion, isDark, onApprove, onDismiss }: Memo
 
 	return (
 		<div
-			className={`rounded-xl border px-3 py-2.5 ${
+			className={`rounded-xl border px-3 py-2.5 ai-chat-chrome ${
 				isDark ? 'border-amber-800/40 bg-amber-950/25 text-amber-50' : 'border-amber-200 bg-amber-50 text-amber-950'
 			}`}
 		>
@@ -151,17 +214,253 @@ function MemorySuggestionCard({ suggestion, isDark, onApprove, onDismiss }: Memo
 	);
 }
 
+interface ChatMessageRowProps {
+	message: UIMessage;
+	isDark: boolean;
+	status: AiChatMessagesProps['status'];
+	isLastAssistant: boolean;
+	isStreamingAssistant: boolean;
+	wasAutoInserted: boolean;
+	selectionActive: boolean;
+	toolPreviews: ToolPreviewState[];
+	editingId: string | null;
+	editDraft: string;
+	onEditDraftChange: (value: string) => void;
+	onStartEdit: (messageId: string, text: string) => void;
+	onCancelEdit: () => void;
+	onEditMessage?: (messageId: string, newText: string) => Promise<boolean>;
+	onRegenerate?: () => void;
+	onInsertText?: (text: string) => void;
+	onReplaceSelection?: (text: string) => void;
+	onUndoAutoInsert?: () => void;
+	onAcceptTool?: (toolId: string) => void;
+	onRejectTool?: (toolId: string) => void;
+}
+
+const ChatMessageRow = memo(function ChatMessageRow({
+	message,
+	isDark,
+	status,
+	isLastAssistant,
+	isStreamingAssistant,
+	wasAutoInserted,
+	selectionActive,
+	toolPreviews,
+	editingId,
+	editDraft,
+	onEditDraftChange,
+	onStartEdit,
+	onCancelEdit,
+	onEditMessage,
+	onRegenerate,
+	onInsertText,
+	onReplaceSelection,
+	onUndoAutoInsert,
+	onAcceptTool,
+	onRejectTool,
+}: ChatMessageRowProps) {
+	const text = getMessageText(message);
+	const isUser = message.role === 'user';
+	const isEditing = editingId === message.id;
+	const showStreamingCursor = isStreamingAssistant && isLastAssistant && text.trim().length > 0;
+	const showThinkingInline =
+		!isUser && isLastAssistant && (status === 'submitted' || status === 'streaming') && text.trim().length === 0;
+	const usedModelLabel = !isUser ? formatUsedModelLabel(message) : null;
+	const mutedClass = isDark ? 'text-slate-500' : 'text-stone-500';
+	const actionBtnClass = isDark
+		? 'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-slate-500 transition hover:bg-white/5 hover:text-slate-200'
+		: 'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-stone-500 transition hover:bg-stone-100 hover:text-stone-800';
+	const userPromptClass = isDark
+		? 'rounded-xl border border-white/10 bg-white/[0.04] text-slate-100'
+		: 'rounded-xl border border-stone-200/90 bg-white text-stone-900 shadow-sm';
+
+	if (isUser) {
+		return (
+			<div className="w-full">
+				<div className={`group relative px-3.5 py-3 text-sm leading-6 ${userPromptClass}`}>
+					{isEditing ? (
+						<div className="space-y-2">
+							<textarea
+								className={`min-h-20 w-full resize-y rounded-lg border bg-transparent px-2 py-1.5 text-sm outline-none ${
+									isDark ? 'border-slate-600 text-slate-100' : 'border-stone-300 text-stone-900'
+								}`}
+								value={editDraft}
+								onChange={(event) => onEditDraftChange(event.target.value)}
+								onKeyDown={(event) => {
+									if (event.key === 'Enter' && !event.shiftKey) {
+										event.preventDefault();
+										void onEditMessage?.(message.id, editDraft).then((success) => {
+											if (success) {
+												onCancelEdit();
+											}
+										});
+									}
+								}}
+							/>
+							<div className="flex items-center gap-2 ai-chat-chrome">
+								<button
+									className={actionBtnClass}
+									type="button"
+									onClick={() => {
+										void onEditMessage?.(message.id, editDraft).then((success) => {
+											if (success) {
+												onCancelEdit();
+											}
+										});
+									}}
+								>
+									<Check size={12} />
+									Resend
+								</button>
+								<button className={actionBtnClass} type="button" onClick={onCancelEdit}>
+									<X size={12} />
+									Cancel
+								</button>
+							</div>
+						</div>
+					) : (
+						<>
+							<div className="ai-chat-selectable whitespace-pre-wrap pr-6">{text}</div>
+							{onEditMessage && status === 'ready' ? (
+								<button
+									aria-label="Edit message"
+									className={`absolute bottom-2 right-2 rounded-md p-1 opacity-0 transition ai-chat-chrome group-hover:opacity-100 ${mutedClass} hover:bg-black/10 hover:text-foreground`}
+									type="button"
+									onMouseDown={(event) => event.preventDefault()}
+									onClick={() => onStartEdit(message.id, text)}
+								>
+									<Pencil size={12} />
+								</button>
+							) : null}
+						</>
+					)}
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className="w-full">
+			{text.trim() ? (
+				<div
+					className={`ai-chat-selectable text-sm leading-6 ${isDark ? 'text-slate-200' : 'text-stone-800'}`}
+					data-ai-chat-dark={isDark ? 'true' : 'false'}
+				>
+					<AssistantMarkdown text={text} />
+				</div>
+			) : null}
+			{showThinkingInline ? (
+				<div className="ai-chat-chrome">
+					<ThinkingDots isDark={isDark} />
+				</div>
+			) : showStreamingCursor ? (
+				<span className={`inline-block animate-pulse ai-chat-chrome ${isDark ? 'text-amber-300' : 'text-amber-600'}`}>
+					▋
+				</span>
+			) : null}
+
+			{wasAutoInserted ? (
+				<div
+					className={`mt-3 flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 text-[10px] uppercase tracking-[0.14em] ai-chat-chrome ${
+						isDark
+							? 'border-emerald-800/50 bg-emerald-950/20 text-emerald-200'
+							: 'border-emerald-300 bg-emerald-50 text-emerald-800'
+					}`}
+				>
+					<Check size={12} />
+					Inserted into script
+					{onUndoAutoInsert ? (
+						<button
+							className={`ml-auto inline-flex items-center gap-1 rounded-md border px-2 py-1 ${
+								isDark
+									? 'border-emerald-700 text-emerald-100 hover:bg-emerald-900/40'
+									: 'border-emerald-400 text-emerald-900 hover:bg-emerald-100'
+							}`}
+							type="button"
+							onClick={onUndoAutoInsert}
+						>
+							<Undo2 size={12} />
+							Undo
+						</button>
+					) : null}
+				</div>
+			) : null}
+
+			{!showThinkingInline ? (
+				<div className="mt-2 flex flex-wrap items-center gap-0.5 ai-chat-chrome">
+					{usedModelLabel ? (
+						<span className={`mr-1 px-1.5 py-1 text-[11px] tabular-nums ${mutedClass}`}>{usedModelLabel}</span>
+					) : null}
+					<button
+						className={actionBtnClass}
+						type="button"
+						onMouseDown={(event) => event.preventDefault()}
+						onClick={() => void navigator.clipboard.writeText(text)}
+					>
+						<Copy size={12} />
+						Copy
+					</button>
+					{onInsertText ? (
+						<button
+							className={actionBtnClass}
+							type="button"
+							onMouseDown={(event) => event.preventDefault()}
+							onClick={() => onInsertText(text)}
+						>
+							<CornerDownLeft size={12} />
+							Insert
+						</button>
+					) : null}
+					{selectionActive && onReplaceSelection ? (
+						<button
+							className={actionBtnClass}
+							type="button"
+							onMouseDown={(event) => event.preventDefault()}
+							onClick={() => onReplaceSelection(text)}
+						>
+							<Replace size={12} />
+							Replace
+						</button>
+					) : null}
+					{isLastAssistant && status === 'ready' && onRegenerate ? (
+						<button
+							className={actionBtnClass}
+							type="button"
+							onMouseDown={(event) => event.preventDefault()}
+							onClick={onRegenerate}
+						>
+							<RotateCcw size={12} />
+							Retry
+						</button>
+					) : null}
+				</div>
+			) : null}
+
+			{toolPreviews.length > 0 ? (
+				<div className="mt-3 space-y-2 ai-chat-chrome">
+					{toolPreviews.map((preview) => (
+						<AiToolCallCard
+							key={preview.id}
+							isDark={isDark}
+							preview={preview}
+							onAccept={onAcceptTool ? () => onAcceptTool(preview.id) : undefined}
+							onReject={onRejectTool ? () => onRejectTool(preview.id) : undefined}
+						/>
+					))}
+				</div>
+			) : null}
+		</div>
+	);
+});
+
 export function AiChatMessages({
 	messages,
 	status,
 	isDark,
 	variant,
 	isLongConversation = false,
-	selectedModel,
-	availableModels,
 	firstLibraryTitle,
 	onRegenerate,
-	onRegenerateWithModel,
 	onEditMessage,
 	onStarterClick,
 	selectionActive = false,
@@ -172,56 +471,36 @@ export function AiChatMessages({
 	memorySuggestions = [],
 	onApproveMemory,
 	onDismissMemory,
+	messageToolPreviews = {},
+	onAcceptTool,
+	onRejectTool,
 }: AiChatMessagesProps) {
 	const [editingId, setEditingId] = useState<string | null>(null);
 	const [editDraft, setEditDraft] = useState('');
-	const [retryModel, setRetryModel] = useState(selectedModel);
 
-	useEffect(() => {
-		setRetryModel(selectedModel);
-	}, [selectedModel]);
+	const handleStartEdit = useCallback((messageId: string, text: string) => {
+		setEditingId(messageId);
+		setEditDraft(text);
+	}, []);
 
-	const bubbleUser = isDark ? 'bg-amber-950/50 text-amber-50' : 'bg-amber-50 text-stone-900';
-	const bubbleAssistant = isDark ? 'bg-slate-900 text-slate-200' : 'bg-white text-stone-800';
+	const handleCancelEdit = useCallback(() => {
+		setEditingId(null);
+		setEditDraft('');
+	}, []);
+
 	const mutedClass = isDark ? 'text-slate-500' : 'text-stone-500';
 	const starters = getStarterPrompts(variant, firstLibraryTitle);
 	const emptyHeading = variant === 'hub' ? 'What can I help with?' : 'Ask about your screenplay';
 
-	const selectClass = isDark
-		? 'rounded-md border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[10px] text-slate-300'
-		: 'rounded-md border border-stone-200 bg-white px-1.5 py-0.5 text-[10px] text-stone-600';
-
-	const markdownComponents = {
-		p: ({ children }: { children?: React.ReactNode }) => <p className="my-2 leading-6">{children}</p>,
-		ul: ({ children }: { children?: React.ReactNode }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
-		ol: ({ children }: { children?: React.ReactNode }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
-		li: ({ children }: { children?: React.ReactNode }) => <li className="leading-6">{children}</li>,
-		strong: ({ children }: { children?: React.ReactNode }) => <strong className="font-semibold">{children}</strong>,
-		em: ({ children }: { children?: React.ReactNode }) => <em className="italic">{children}</em>,
-		code: ({ children }: { children?: React.ReactNode }) => (
-			<code
-				className={`rounded px-1 py-0.5 font-mono text-[0.85em] ${
-					isDark ? 'bg-slate-950/60 text-amber-200' : 'bg-stone-100 text-stone-900'
-				}`}
-			>
-				{children}
-			</code>
-		),
-		pre: ({ children }: { children?: React.ReactNode }) => (
-			<pre
-				className={`my-2 overflow-x-auto rounded-lg p-3 font-mono text-xs leading-5 ${
-					isDark ? 'bg-slate-950/60 text-slate-200' : 'bg-stone-100 text-stone-900'
-				}`}
-			>
-				{children}
-			</pre>
-		),
-		h1: ({ children }: { children?: React.ReactNode }) => <h3 className="mt-3 text-base font-semibold">{children}</h3>,
-		h2: ({ children }: { children?: React.ReactNode }) => <h4 className="mt-2 text-sm font-semibold">{children}</h4>,
-		h3: ({ children }: { children?: React.ReactNode }) => <h5 className="mt-2 text-sm font-medium">{children}</h5>,
-	};
-
 	if (messages.length === 0) {
+		if (isAwaitingAssistantReply(messages, status)) {
+			return (
+				<div className="px-4 py-4 ai-chat-chrome">
+					<ThinkingDots isDark={isDark} />
+				</div>
+			);
+		}
+
 		return (
 			<div className={`flex h-full flex-col items-center justify-center px-6 py-8 text-center ${mutedClass}`}>
 				<p className={`text-sm font-medium ${isDark ? 'text-slate-300' : 'text-stone-800'}`}>{emptyHeading}</p>
@@ -248,8 +527,8 @@ export function AiChatMessages({
 	}
 
 	const lastMessage = messages[messages.length - 1];
-	const isStreamingAssistant =
-		status === 'streaming' && lastMessage?.role === 'assistant';
+	const isStreamingAssistant = status === 'streaming' && lastMessage?.role === 'assistant';
+	const awaitingAssistantReply = isAwaitingAssistantReply(messages, status);
 	const showMemorySuggestions =
 		status === 'ready' &&
 		lastMessage?.role === 'assistant' &&
@@ -258,10 +537,10 @@ export function AiChatMessages({
 		onDismissMemory;
 
 	return (
-		<div className="space-y-4 px-4 py-4">
+		<div className="space-y-6 px-4 py-4" data-ai-chat-dark={isDark ? 'true' : 'false'}>
 			{isLongConversation ? (
 				<div
-					className={`rounded-lg border px-3 py-2 text-xs ${
+					className={`rounded-lg border px-3 py-2 text-xs ai-chat-chrome ${
 						isDark ? 'border-amber-800/50 bg-amber-950/20 text-amber-200/90' : 'border-amber-200 bg-amber-50 text-amber-900'
 					}`}
 				>
@@ -269,202 +548,37 @@ export function AiChatMessages({
 				</div>
 			) : null}
 
-			{messages.map((message) => {
-				const text = getMessageText(message);
-				const isUser = message.role === 'user';
-				const isLastAssistant = !isUser && message.id === lastMessage?.id;
-				const isEditing = editingId === message.id;
-				const showStreamingCursor = isStreamingAssistant && isLastAssistant;
-				const wasAutoInserted = !isUser && message.id === autoInsertedMessageId;
+			{messages.map((message) => (
+				<ChatMessageRow
+					key={message.id}
+					message={message}
+					isDark={isDark}
+					status={status}
+					isLastAssistant={message.role !== 'user' && message.id === lastMessage?.id}
+					isStreamingAssistant={isStreamingAssistant}
+					wasAutoInserted={message.id === autoInsertedMessageId}
+					selectionActive={selectionActive}
+					toolPreviews={message.role !== 'user' ? messageToolPreviews[message.id] ?? [] : []}
+					editingId={editingId}
+					editDraft={editDraft}
+					onEditDraftChange={setEditDraft}
+					onStartEdit={handleStartEdit}
+					onCancelEdit={handleCancelEdit}
+					onEditMessage={onEditMessage}
+					onRegenerate={onRegenerate}
+					onInsertText={onInsertText}
+					onReplaceSelection={onReplaceSelection}
+					onUndoAutoInsert={onUndoAutoInsert}
+					onAcceptTool={onAcceptTool}
+					onRejectTool={onRejectTool}
+				/>
+			))}
 
-				return (
-					<div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-						<div className={`max-w-[92%] rounded-2xl px-3 py-2.5 text-sm leading-6 ${isUser ? bubbleUser : bubbleAssistant}`}>
-							<div className={`mb-1 text-[10px] uppercase tracking-[0.16em] ${mutedClass}`}>
-								{isUser ? 'You' : 'Assistant'}
-							</div>
-
-							{isEditing ? (
-								<div className="space-y-2">
-									<textarea
-										className={`min-h-20 w-full resize-y rounded-lg border px-2 py-1.5 text-sm outline-none ${
-											isDark ? 'border-slate-600 bg-slate-950 text-slate-100' : 'border-stone-300 bg-white text-stone-900'
-										}`}
-										value={editDraft}
-										onChange={(event) => setEditDraft(event.target.value)}
-										onKeyDown={(event) => {
-											if (event.key === 'Enter' && !event.shiftKey) {
-												event.preventDefault();
-												void onEditMessage?.(message.id, editDraft).then((success) => {
-													if (success) {
-														setEditingId(null);
-														setEditDraft('');
-													}
-												});
-											}
-										}}
-									/>
-									<div className="flex items-center gap-2">
-										<button
-											className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${
-												isDark ? 'border-amber-700 text-amber-200' : 'border-amber-400 text-stone-900'
-											}`}
-											type="button"
-											onClick={() => {
-												void onEditMessage?.(message.id, editDraft).then((success) => {
-													if (success) {
-														setEditingId(null);
-														setEditDraft('');
-													}
-												});
-											}}
-										>
-											<Check size={12} />
-											Resend
-										</button>
-										<button
-											className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${
-												isDark ? 'border-slate-700 text-slate-400' : 'border-stone-200 text-stone-500'
-											}`}
-											type="button"
-											onClick={() => {
-												setEditingId(null);
-												setEditDraft('');
-											}}
-										>
-											<X size={12} />
-											Cancel
-										</button>
-									</div>
-								</div>
-							) : isUser ? (
-								<div className="whitespace-pre-wrap">{text}</div>
-							) : (
-								<div className={`space-y-2 ${isDark ? 'text-slate-200' : 'text-stone-800'}`}>
-									<ReactMarkdown components={markdownComponents}>{text}</ReactMarkdown>
-									{showStreamingCursor ? (
-										<span className={`inline-block animate-pulse ${isDark ? 'text-amber-300' : 'text-amber-600'}`}>▋</span>
-									) : null}
-								</div>
-							)}
-
-							{!isUser && !isEditing && wasAutoInserted ? (
-								<div
-									className={`mt-2 flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 text-[10px] uppercase tracking-[0.14em] ${
-										isDark ? 'border-emerald-800/50 bg-emerald-950/20 text-emerald-200' : 'border-emerald-300 bg-emerald-50 text-emerald-800'
-									}`}
-								>
-									<Check size={12} />
-									Inserted into script
-									{onUndoAutoInsert ? (
-										<button
-											className={`ml-auto inline-flex items-center gap-1 rounded-md border px-2 py-1 ${
-												isDark ? 'border-emerald-700 text-emerald-100 hover:bg-emerald-900/40' : 'border-emerald-400 text-emerald-900 hover:bg-emerald-100'
-											}`}
-											type="button"
-											onClick={onUndoAutoInsert}
-										>
-											<Undo2 size={12} />
-											Undo
-										</button>
-									) : null}
-								</div>
-							) : !isUser && !isEditing ? (
-								<div className="mt-2 flex flex-wrap items-center gap-2">
-									<button
-										className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${
-											isDark ? 'border-slate-700 text-slate-400 hover:text-slate-200' : 'border-stone-200 text-stone-500 hover:text-stone-800'
-										}`}
-										type="button"
-										onClick={() => void navigator.clipboard.writeText(text)}
-									>
-										<Copy size={12} />
-										Copy
-									</button>
-									{onInsertText ? (
-										<button
-											className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${
-												isDark ? 'border-slate-700 text-slate-400 hover:text-slate-200' : 'border-stone-200 text-stone-500 hover:text-stone-800'
-											}`}
-											type="button"
-											onClick={() => onInsertText(text)}
-										>
-											<CornerDownLeft size={12} />
-											Insert
-										</button>
-									) : null}
-									{selectionActive && onReplaceSelection ? (
-										<button
-											className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${
-												isDark ? 'border-slate-700 text-slate-400 hover:text-slate-200' : 'border-stone-200 text-stone-500 hover:text-stone-800'
-											}`}
-											type="button"
-											onClick={() => onReplaceSelection(text)}
-										>
-											<Replace size={12} />
-											Replace Selection
-										</button>
-									) : null}
-									{isLastAssistant && status === 'ready' && onRegenerate ? (
-										<>
-											<button
-												className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${
-													isDark ? 'border-slate-700 text-slate-400 hover:text-slate-200' : 'border-stone-200 text-stone-500 hover:text-stone-800'
-												}`}
-												type="button"
-												onClick={() => {
-													if (retryModel !== selectedModel && onRegenerateWithModel) {
-														void onRegenerateWithModel(retryModel);
-														return;
-													}
-
-													onRegenerate();
-												}}
-											>
-												<RotateCcw size={12} />
-												Retry
-											</button>
-											{availableModels.length > 0 ? (
-												<select
-													className={selectClass}
-													value={retryModel}
-													onChange={(event) => setRetryModel(event.target.value)}
-													aria-label="Model for retry"
-												>
-													<option value={AUTO_MODEL_ID}>Auto</option>
-													{availableModels.map((model) => (
-														<option key={model.id} value={model.id}>
-															{model.label}
-														</option>
-													))}
-												</select>
-											) : null}
-										</>
-									) : null}
-								</div>
-							) : null}
-
-							{isUser && !isEditing && onEditMessage && status === 'ready' ? (
-								<div className="mt-2">
-									<button
-										className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${
-											isDark ? 'border-slate-700 text-slate-400 hover:text-slate-200' : 'border-stone-200 text-stone-500 hover:text-stone-800'
-										}`}
-										type="button"
-										onClick={() => {
-											setEditingId(message.id);
-											setEditDraft(text);
-										}}
-									>
-										<Pencil size={12} />
-										Edit
-									</button>
-								</div>
-							) : null}
-						</div>
-					</div>
-				);
-			})}
+			{awaitingAssistantReply ? (
+				<div className="w-full ai-chat-chrome">
+					<ThinkingDots isDark={isDark} />
+				</div>
+			) : null}
 
 			{showMemorySuggestions ? (
 				<div className="space-y-2">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ScreenplayDocumentRecord, ScreenplayProjectRecord } from '../types';
 import { createDefaultWorkspaceData } from '../types';
 import {
@@ -10,6 +10,7 @@ import {
 } from '../utils/hub-folder-utils';
 import {
 	createDocument,
+	createHubFile,
 	createTemplateScreenplayContent,
 	deleteProject,
 	duplicateDocument,
@@ -25,6 +26,7 @@ import {
 	renameDocument,
 	restoreDocument,
 	restoreProject,
+	saveDocument,
 	softDeleteDocument,
 	updateProject,
 } from '../utils/screenplay-storage';
@@ -35,6 +37,13 @@ import { SCRIPT_TEMPLATE_STRUCTURE } from '../utils/script-templates';
 import { createStructureBeatsFromTemplate } from '../utils/story-structure';
 import type { ScriptTemplate } from '../utils/user-settings';
 import type { HubConfirmDialogState } from './useHubDialogs';
+import { createEphemeralDocument } from '../utils/ephemeral-documents';
+import { findReusableUntitledBlank } from '../utils/untitled-dedupe';
+import { sweepBlankDrafts } from '../utils/hub-sweep';
+import { UNTITLED_SCREENPLAY_TITLE } from '../utils/scratch-template';
+import { readFileAsDataUrl } from '../utils/image-crop';
+
+const MAX_HUB_FILE_BYTES = 8 * 1024 * 1024;
 
 const TEMPLATE_TITLES: Record<ScriptTemplate, string> = {
 	feature: 'Feature Draft',
@@ -77,6 +86,7 @@ interface UseHubDataParams {
 	projectInfoProject: ScreenplayProjectRecord | null;
 	clearProjectInfo: () => void;
 	onAfterRefresh?: () => void;
+	onSweep?: (documents: ScreenplayDocumentRecord[]) => void;
 }
 
 export function useHubData({
@@ -96,6 +106,7 @@ export function useHubData({
 	projectInfoProject,
 	clearProjectInfo,
 	onAfterRefresh,
+	onSweep,
 }: UseHubDataParams) {
 	const [documents, setDocuments] = useState<ScreenplayDocumentRecord[]>([]);
 	const [trashedDocuments, setTrashedDocuments] = useState<ScreenplayDocumentRecord[]>([]);
@@ -103,6 +114,11 @@ export function useHubData({
 	const [projects, setProjects] = useState<ScreenplayProjectRecord[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [loadError, setLoadError] = useState(false);
+	const onAfterRefreshRef = useRef(onAfterRefresh);
+	const onSweepRef = useRef(onSweep);
+
+	onAfterRefreshRef.current = onAfterRefresh;
+	onSweepRef.current = onSweep;
 
 	const refreshDocuments = useCallback(async () => {
 		const nextDocuments = await getActiveDocuments();
@@ -133,9 +149,17 @@ export function useHubData({
 			refreshProjects(),
 		]);
 
-		onAfterRefresh?.();
+		const { sweptDocuments } = await sweepBlankDrafts(nextDocuments);
+
+		if (sweptDocuments.length > 0) {
+			onSweepRef.current?.(sweptDocuments);
+			await refreshDocuments();
+			await refreshTrash();
+		}
+
+		onAfterRefreshRef.current?.();
 		return { nextDocuments, ...trashResult, nextProjects };
-	}, [onAfterRefresh, refreshDocuments, refreshProjects, refreshTrash]);
+	}, [refreshDocuments, refreshProjects, refreshTrash]);
 
 	useEffect(() => {
 		let active = true;
@@ -270,11 +294,30 @@ export function useHubData({
 
 	const handleCreateScratch = useCallback(
 		async (projectId?: string) => {
-			const createdDocument = await createDocument('Untitled', undefined, resolveProjectId(projectId));
-			await refreshAll();
+			const reusable = findReusableUntitledBlank(documents);
+
+			if (reusable) {
+				onOpenDocument(reusable.id);
+				return;
+			}
+
+			const createdDocument = createEphemeralDocument({
+				projectId: resolveProjectId(projectId),
+			});
 			onOpenDocument(createdDocument.id);
 		},
-		[onOpenDocument, refreshAll, resolveProjectId],
+		[documents, onOpenDocument, resolveProjectId],
+	);
+
+	const handleStartGuide = useCallback(
+		async (projectId?: string) => {
+			const createdDocument = createEphemeralDocument({
+				projectId: resolveProjectId(projectId),
+				withGuide: true,
+			});
+			onOpenDocument(createdDocument.id);
+		},
+		[onOpenDocument, resolveProjectId],
 	);
 
 	const handleCreateTemplate = useCallback(
@@ -501,6 +544,41 @@ export function useHubData({
 		[clearEditing, documents, editingTitle, refreshDocuments],
 	);
 
+	const updateDocumentPoster = useCallback(
+		async (documentId: string, posterImageDataUrl: string | null) => {
+			const currentDocument = documents.find((document) => document.id === documentId);
+
+			if (!currentDocument) {
+				return;
+			}
+
+			await saveDocument({ ...currentDocument, posterImageDataUrl });
+			await refreshDocuments();
+		},
+		[documents, refreshDocuments],
+	);
+
+	const handleAddHubFile = useCallback(
+		async (file: File, projectId?: string) => {
+			if (file.size > MAX_HUB_FILE_BYTES) {
+				showAlert('File too large', 'Hub files must be 8 MB or smaller.');
+				return;
+			}
+
+			const dataUrl = await readFileAsDataUrl(file);
+
+			await createHubFile({
+				fileName: file.name,
+				mimeType: file.type || 'application/octet-stream',
+				dataUrl,
+				byteSize: file.size,
+				projectId: resolveProjectId(projectId),
+			});
+			await refreshDocuments();
+		},
+		[refreshDocuments, resolveProjectId, showAlert],
+	);
+
 	const handleMoveDocument = useCallback(
 		async (projectId: string | null) => {
 			if (!moveDocumentId) {
@@ -572,6 +650,7 @@ export function useHubData({
 		refreshProjects,
 		refreshAll,
 		handleCreateScratch,
+		handleStartGuide,
 		handleCreateTemplate,
 		handleUploadFile,
 		handleSoftDelete,
@@ -583,6 +662,8 @@ export function useHubData({
 		handlePermanentDelete,
 		handlePermanentDeleteProject,
 		commitDocumentRename,
+		updateDocumentPoster,
+		handleAddHubFile,
 		handleMoveDocument,
 		handleSaveProjectInfo,
 		moveDocument,

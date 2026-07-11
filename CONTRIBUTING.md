@@ -20,13 +20,22 @@ Signatures are stored in `signatures/version1/cla.json`. Corporate contributors 
 git clone <your-fork-url>
 cd dastan
 npm install
-cp .env.example .env.local   # optional — local dev works without cloud env vars
 npm run dev                  # http://localhost:5173
 ```
 
 ### Environment variables
 
-Copy `.env.example` to `.env.local` and fill in placeholders for Supabase and cloud adapters. Never commit `.env.local` or real API keys.
+Create `apps/web/.env.local` (dev) or `apps/web/.env.production` (prod build) — not committed:
+
+```bash
+VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=
+VITE_AI_CHAT_URL=https://<your-project-ref>.supabase.co/functions/v1/chat
+VITE_DASTAN_DOCS_URL=https://dastanapp.com/docs
+# VITE_DASTAN_CLOUD_URL=   # optional — see docs/CLOUD-REPO.md
+```
+
+Never commit env files or real API keys.
 
 Local AI chat uses the Vite dev proxy at `/api/chat` when `VITE_AI_CHAT_URL` is unset. Provider API keys are entered in the app (Settings → AI) and stored only in the browser.
 

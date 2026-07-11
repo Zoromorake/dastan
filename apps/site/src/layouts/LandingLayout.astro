@@ -7,7 +7,7 @@ interface Props {
 }
 
 const {
-	title = 'Dastan — Write the script. Keep the script.',
+	title = 'Dastan: Write the script. Keep the script.',
 	description = 'Free, open-source, local-first screenwriting with AI on your own key.',
 } = Astro.props;
 ---
@@ -26,6 +26,9 @@ const {
 		/>
 	</head>
 	<body>
+		<div class="night-sky" aria-hidden="true">
+			<div class="night-sky__stars night-sky__stars--twinkle"></div>
+		</div>
 		<slot />
 		<script>
 			const reveals = document.querySelectorAll('.reveal');

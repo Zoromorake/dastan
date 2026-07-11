@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { formatPageAndRuntime, formatRuntimeEstimate, estimateRuntimeMinutes } from './runtime-estimate';
+import { formatPageCount, estimateRuntimeMinutes } from './runtime-estimate';
 
 describe('runtime-estimate', () => {
-	it('uses one minute per page', () => {
-		expect(estimateRuntimeMinutes(90)).toBe(90);
-		expect(formatRuntimeEstimate(90)).toBe('~90 min');
-		expect(formatPageAndRuntime(12)).toBe('12 pg · ~12 min');
+	it('formats page counts for display', () => {
+		expect(formatPageCount(0)).toBe('0 pages');
+		expect(formatPageCount(1)).toBe('1 page');
+		expect(formatPageCount(12)).toBe('12 pages');
 	});
 
-	it('never returns less than one minute', () => {
+	it('keeps runtime estimate helper for internal use', () => {
+		expect(estimateRuntimeMinutes(90)).toBe(90);
 		expect(estimateRuntimeMinutes(0)).toBe(1);
-		expect(formatRuntimeEstimate(1)).toBe('~1 min');
 	});
 });

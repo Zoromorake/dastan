@@ -16,7 +16,7 @@ npm run site:dev     # landing + docs → http://localhost:4321
 
 | Done | Item | Notes |
 |:----:|------|-------|
-| ☐ | Landing loads at `/` — hero headline, CTAs, all sections scroll | |
+| x | Landing loads at `/` — hero headline, CTAs, all sections scroll | |
 | ☐ | Hero editor island — Tab cycles elements, Enter advances, sluglines uppercase | |
 | ☐ | Mobile hero — video placeholder shows (no broken island) | |
 | ☐ | Craft bento links open the right doc page | |

@@ -37,10 +37,14 @@ interface DastanDatabase extends DBSchema {
 		key: string;
 		value: import('./ai-memory-storage').AiChatThread;
 	};
+	codex_items: {
+		key: string;
+		value: import('./codex-storage').CodexItem;
+	};
 }
 
 const DATABASE_NAME = 'dastan';
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 6;
 const LAST_DOCUMENT_KEY = 'lastDocumentId';
 const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_VERSIONS_PER_DOCUMENT = 20;
@@ -121,7 +125,7 @@ function normalizeDocumentRecord(document: ScreenplayDocumentRecord): Screenplay
 	};
 }
 
-async function getDatabase() {
+export async function getDatabase() {
 	return openDB<DastanDatabase>(DATABASE_NAME, DATABASE_VERSION, {
 		upgrade(database) {
 			if (!database.objectStoreNames.contains('documents')) {
@@ -146,6 +150,10 @@ async function getDatabase() {
 
 			if (!database.objectStoreNames.contains('chat_threads')) {
 				database.createObjectStore('chat_threads');
+			}
+
+			if (!database.objectStoreNames.contains('codex_items')) {
+				database.createObjectStore('codex_items');
 			}
 		},
 	});
@@ -326,6 +334,37 @@ export async function createDocument(
 	const document = createDocumentRecordWithTitle(globalThis.crypto.randomUUID(), title, content, projectId, workspace);
 	await database.put('documents', document, document.id);
 	await setLastDocumentId(document.id);
+	return document;
+}
+
+export async function createHubFile(input: {
+	fileName: string;
+	mimeType: string;
+	dataUrl: string;
+	byteSize: number;
+	projectId?: string;
+}): Promise<ScreenplayDocumentRecord> {
+	const database = await getDatabase();
+	const now = new Date().toISOString();
+	const document: ScreenplayDocumentRecord = normalizeDocumentRecord({
+		id: globalThis.crypto.randomUUID(),
+		title: input.fileName,
+		createdAt: now,
+		updatedAt: now,
+		projectId: input.projectId,
+		layout: createDefaultDocumentLayout(),
+		workspace: createDefaultWorkspaceData(),
+		content: { type: 'doc', content: [] },
+		hubKind: 'file',
+		hubFile: {
+			fileName: input.fileName,
+			mimeType: input.mimeType,
+			dataUrl: input.dataUrl,
+			byteSize: input.byteSize,
+		},
+	});
+
+	await database.put('documents', document, document.id);
 	return document;
 }
 

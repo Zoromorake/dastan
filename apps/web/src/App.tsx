@@ -9,6 +9,8 @@ import { useScreenplayStore } from './store';
 import { getHubPathForDocument } from './utils/navigation';
 import { hasAcknowledgedLocalOnlyMode } from './utils/local-identity';
 import { endWritingSession } from './utils/writing-stats';
+import { discardEphemeralDocument, getEphemeralDocument } from './utils/ephemeral-documents';
+import { isBlankDraft } from './utils/is-blank-draft';
 
 const MainHubDashboard = lazy(() =>
 	import('./components/MainHubDashboard').then((module) => ({ default: module.MainHubDashboard })),
@@ -73,6 +75,12 @@ function EditorPage() {
 
 		return () => {
 			endWritingSession();
+			const currentDocument = useScreenplayStore.getState().currentDocument;
+
+			if (currentDocument && getEphemeralDocument(currentDocument.id) && isBlankDraft(currentDocument)) {
+				discardEphemeralDocument(currentDocument.id);
+			}
+
 			resetEditorState();
 		};
 	}, [documentId, resetEditorState]);

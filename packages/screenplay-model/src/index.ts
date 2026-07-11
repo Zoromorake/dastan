@@ -160,6 +160,12 @@ export interface StoryBasics {
 	logline: string;
 	synopsis: string;
 	genre: string;
+	/** One-sentence spark from Development Room */
+	spark?: string;
+	/** Tone descriptors, e.g. "tense, grounded" */
+	tone?: string;
+	/** Up to three comparable films */
+	comparableFilms?: string[];
 	actSummaries: [string, string, string];
 }
 
@@ -192,6 +198,9 @@ export interface BeatBoardCard {
 
 export interface CharacterProfile {
 	name: string;
+	want?: string;
+	need?: string;
+	flaw?: string;
 	age?: string;
 	arc?: string;
 	notes?: string;
@@ -226,6 +235,11 @@ export interface SmartTypeExclusions {
 	extensions?: string[];
 }
 
+export interface GuideState {
+	active: boolean;
+	furthestStep: string;
+}
+
 export interface ScreenplayWorkspaceData {
 	globalNotes: string;
 	sceneNotes: Record<number, string>;
@@ -241,6 +255,10 @@ export interface ScreenplayWorkspaceData {
 	activeRevisionSetId?: string | null;
 	/** Keys are 0-based scene ordinals, values are display labels (e.g. "12A"). */
 	sceneNumberLocks?: Record<number, string>;
+	/** Development Room progress — guide data lives in existing workspace fields */
+	guide?: GuideState;
+	/** Per-script writer rules for AI context */
+	aiWriterRules?: string;
 }
 
 export interface ScreenplayDocumentRecord {
@@ -253,6 +271,23 @@ export interface ScreenplayDocumentRecord {
 	layout?: ScreenplayDocumentLayout;
 	workspace?: ScreenplayWorkspaceData;
 	content: JSONContent;
+	/** 0-based block index where the writer last left off */
+	lastCursorBlockIndex?: number;
+	/** Reserved for user-uploaded poster art — UI deferred; see future-tasks.md */
+	posterImageDataUrl?: string | null;
+	/** Distinguishes editable scripts from reference files stored in the hub. */
+	hubKind?: HubItemKind;
+	/** Present when hubKind is `file`. */
+	hubFile?: HubFileData;
+}
+
+export type HubItemKind = 'script' | 'file';
+
+export interface HubFileData {
+	fileName: string;
+	mimeType: string;
+	dataUrl: string;
+	byteSize: number;
 }
 
 export interface ScreenplayVersionSnapshot {
@@ -346,6 +381,9 @@ export function normalizeStoryDevelopment(development: StoryDevelopment | undefi
 		basics: {
 			...defaults.basics,
 			...development.basics,
+			spark: development.basics?.spark ?? '',
+			tone: development.basics?.tone ?? '',
+			comparableFilms: development.basics?.comparableFilms ?? [],
 			actSummaries: [
 				actSummaries[0] ?? '',
 				actSummaries[1] ?? '',

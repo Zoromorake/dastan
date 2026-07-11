@@ -44,6 +44,15 @@ export default {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
+        gold: 'hsl(var(--gold))',
+        paper: {
+          DEFAULT: 'hsl(var(--paper))',
+          bright: 'hsl(var(--paper-bright))',
+        },
+        ink: {
+          DEFAULT: 'hsl(var(--ink))',
+          soft: 'hsl(var(--ink-soft))',
+        },
       },
     },
   },

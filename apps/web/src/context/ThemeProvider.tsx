@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import type { UserThemeSetting } from '../components/UserSettingsPanel';
 
 const themeStorageKey = 'dastan.theme';
@@ -63,7 +63,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 		};
 	}, []);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
 	}, [resolvedTheme]);
 

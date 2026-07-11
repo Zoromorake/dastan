@@ -1,6 +1,7 @@
 import type { JSONContent } from '@tiptap/core';
 import { getSceneHeadingsFromContent, getScreenplayBlocksFromContent } from '@dastan/fountain-parser';
 import type { ScreenplayWorkspaceData } from '../types';
+import { defaultScriptContextSections, type ScriptContextSections } from './ai-script-context-options';
 import { toPlainTextScreenplay } from './screenplay-text';
 
 export const MAX_SCRIPT_CHARS = 48_000;
@@ -24,7 +25,7 @@ function getSceneIndexForBlockIndex(content: JSONContent, blockIndex: number): n
 	return 0;
 }
 
-function extractSceneFullText(content: JSONContent, sceneIndex: number): string {
+export function extractSceneFullText(content: JSONContent, sceneIndex: number): string {
 	const headings = getSceneHeadingsFromContent(content);
 	const blocks = getScreenplayBlocksFromContent(content);
 
@@ -43,7 +44,7 @@ function extractSceneFullText(content: JSONContent, sceneIndex: number): string 
 		.join('\n');
 }
 
-function buildRollingSummary(workspace: ScreenplayWorkspaceData, sceneCount: number, totalChars: number): string {
+export function buildRollingSummary(workspace: ScreenplayWorkspaceData, sceneCount: number, totalChars: number): string {
 	const { basics, structureBeats } = workspace.development;
 	const lines: string[] = [
 		`Rolling story summary (${sceneCount} scenes, ${totalChars.toLocaleString()} characters):`,
@@ -87,7 +88,7 @@ function buildRollingSummary(workspace: ScreenplayWorkspaceData, sceneCount: num
 	return lines.join('\n\n');
 }
 
-function extractSceneExcerpt(content: JSONContent, sceneIndex: number, maxChars: number): string {
+export function extractSceneExcerpt(content: JSONContent, sceneIndex: number, maxChars: number): string {
 	const fullScene = extractSceneFullText(content, sceneIndex).trim();
 
 	if (!fullScene) {
@@ -138,6 +139,7 @@ export function buildSmartScriptContext(
 	workspace: ScreenplayWorkspaceData,
 	maxChars: number = MAX_SCRIPT_CHARS,
 	activeBlockIndex?: number | null,
+	sectionToggles: ScriptContextSections = defaultScriptContextSections(),
 ): string {
 	if (!documentContent) {
 		return '';
@@ -171,39 +173,55 @@ export function buildSmartScriptContext(
 		sections.push(`Active scene (full text, scene ${activeSceneIndex + 1}):\n${activeSceneText}`);
 	}
 
-	for (const neighborIndex of [activeSceneIndex - 1, activeSceneIndex + 1]) {
-		if (neighborIndex < 0 || neighborIndex >= sceneCount) {
-			continue;
-		}
+	if (sectionToggles.neighboringScenes) {
+		for (const neighborIndex of [activeSceneIndex - 1, activeSceneIndex + 1]) {
+			if (neighborIndex < 0 || neighborIndex >= sceneCount) {
+				continue;
+			}
 
-		const neighborText = extractSceneFullText(documentContent, neighborIndex);
+			const neighborText = extractSceneFullText(documentContent, neighborIndex);
 
-		if (neighborText.trim()) {
-			sections.push(`Adjacent scene (full text, scene ${neighborIndex + 1}):\n${neighborText}`);
+			if (neighborText.trim()) {
+				sections.push(`Adjacent scene (full text, scene ${neighborIndex + 1}):\n${neighborText}`);
+			}
 		}
 	}
 
-	sections.push(buildRollingSummary(workspace, sceneCount, fullText.length));
-	sections.push(`Scene outline (${headings.length} scenes):\n${outline}`);
+	if (sectionToggles.rollingSummary) {
+		sections.push(buildRollingSummary(workspace, sceneCount, fullText.length));
+	}
 
+	if (sectionToggles.sceneOutline) {
+		sections.push(`Scene outline (${headings.length} scenes):\n${outline}`);
+	}
+
+	const openingReserve = sectionToggles.scriptOpening ? OPENING_CHARS : 0;
+	const endingReserve = sectionToggles.scriptEnding ? ENDING_CHARS : 0;
 	const usedChars = sections.join('\n\n').length;
-	const excerptBudget = Math.max(4_000, maxChars - usedChars - OPENING_CHARS - ENDING_CHARS - 500);
-	const radiatingExcerpts = extractRadiatingSceneExcerpts(
-		documentContent,
-		activeSceneIndex,
-		sceneCount,
-		excerptBudget,
-	);
+	const excerptBudget = Math.max(4_000, maxChars - usedChars - openingReserve - endingReserve - 500);
 
-	if (radiatingExcerpts) {
-		sections.push(radiatingExcerpts);
+	if (sectionToggles.otherSceneExcerpts) {
+		const radiatingExcerpts = extractRadiatingSceneExcerpts(
+			documentContent,
+			activeSceneIndex,
+			sceneCount,
+			excerptBudget,
+		);
+
+		if (radiatingExcerpts) {
+			sections.push(radiatingExcerpts);
+		}
 	}
 
 	const openingEndingBudget = Math.max(0, maxChars - sections.join('\n\n').length - 200);
 
-	if (openingEndingBudget > 0) {
-		const openingBudget = Math.min(OPENING_CHARS, Math.floor(openingEndingBudget * 0.6));
-		const endingBudget = Math.min(ENDING_CHARS, openingEndingBudget - openingBudget);
+	if (openingEndingBudget > 0 && (sectionToggles.scriptOpening || sectionToggles.scriptEnding)) {
+		const openingBudget = sectionToggles.scriptOpening
+			? Math.min(OPENING_CHARS, Math.floor(openingEndingBudget * (sectionToggles.scriptEnding ? 0.6 : 1)))
+			: 0;
+		const endingBudget = sectionToggles.scriptEnding
+			? Math.min(ENDING_CHARS, openingEndingBudget - openingBudget)
+			: 0;
 
 		if (openingBudget > 0) {
 			sections.push(`Script opening:\n${fullText.slice(0, openingBudget)}`);

@@ -7,6 +7,7 @@
  * // the product without importing apps/web.
  */
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { KHATAM_PATHS, KHATAM_VIEWBOX } from '../lib/khatam';
 import './HeroEditor.css';
 
 type BlockType = 'scene_heading' | 'action' | 'character' | 'dialogue' | 'parenthetical' | 'transition';
@@ -74,6 +75,15 @@ function enforceCase(type: BlockType, text: string): string {
 
 function isUppercaseType(type: BlockType): boolean {
 	return type === 'scene_heading' || type === 'character' || type === 'transition';
+}
+
+function KhatamCorner({ className }: { className?: string }) {
+	return (
+		<svg className={className} viewBox={KHATAM_VIEWBOX} fill="none" aria-hidden="true">
+			<path d={KHATAM_PATHS[0]} stroke="currentColor" strokeWidth="0.55" />
+			<path d={KHATAM_PATHS[1]} stroke="currentColor" strokeWidth="0.4" />
+		</svg>
+	);
 }
 
 export function HeroEditor() {
@@ -145,6 +155,8 @@ export function HeroEditor() {
 	return (
 		<div className="hero-editor" role="region" aria-label="Try the screenplay editor">
 			<div className="hero-editor__page">
+				<KhatamCorner className="hero-editor__khatam hero-editor__khatam--tl" />
+				<KhatamCorner className="hero-editor__khatam hero-editor__khatam--br" />
 				{blocks.map((block) => (
 					<div
 						key={block.id}

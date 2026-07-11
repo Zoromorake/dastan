@@ -1,26 +1,34 @@
 ---
 import { HeroEditor } from '../HeroEditor';
+import CapturePlaceholder from '../CapturePlaceholder.astro';
+import { GITHUB_STARS_THRESHOLD } from '../../lib/site-config';
 import type { SiteLinks } from '../../lib/types';
 
 interface Props {
 	links: SiteLinks;
 	stars: number;
 }
+
 const { links, stars } = Astro.props;
+const showStars = stars >= GITHUB_STARS_THRESHOLD;
 ---
 
 <section class="hero reveal">
 	<div class="hero__inner">
-		<p class="slugline">INT. YOUR SCRIPT — NIGHT</p>
+		<p class="slugline">INT. YOUR SCRIPT - NIGHT</p>
 		<h1 class="hero__title">Write the script.<br />Keep the script.</h1>
 		<p class="hero__sub">
-			Free, open-source, local-first screenwriting — with AI on your own API key, never on your pages by default.
+			Free, open-source, local-first screenwriting with AI on your own API key. Your pages stay private by default.
 		</p>
 		<div class="hero__ctas">
-			<a class="btn btn--primary" href={links.appUrl}>Start writing — free</a>
+			<a class="btn btn--primary" href={links.appUrl}>Start writing free</a>
 			<a class="btn btn--ghost" href={links.repoUrl} rel="noreferrer" target="_blank">
 				GitHub
-				<span class="hero__stars" aria-label={`${stars} stars`}>★ {stars}</span>
+				{showStars && (
+					<span class="hero__stars" aria-label={`${stars} stars`}>
+						★ {stars}
+					</span>
+				)}
 			</a>
 		</div>
 	</div>
@@ -31,12 +39,11 @@ const { links, stars } = Astro.props;
 
 	<div class="hero__editor hero__editor--mobile">
 		<!--
-			ARIF: screen-record 15s of typing in the real editor — Tab/Enter flow, dark ink UI around bright page,
+			ARIF: screen-record 15s of typing in the real editor, Tab/Enter flow, dark ink UI around bright page,
 			original sample scene, export as webm ~640px wide, place at public/hero-demo.webm
 		-->
-		<div class="hero__video-placeholder" role="img" aria-label="Editor demo video placeholder">
-			<p>Editor demo</p>
-			<span>15s capture slot</span>
+		<div class="hero__video-frame">
+			<CapturePlaceholder name="Editor demo" />
 		</div>
 	</div>
 </section>
@@ -76,63 +83,16 @@ const { links, stars } = Astro.props;
 		gap: 0.75rem;
 	}
 
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.7rem 1.15rem;
-		border-radius: 0.45rem;
-		font-size: 0.92rem;
-		font-weight: 600;
-		text-decoration: none;
-		transition:
-			transform 0.2s ease,
-			background 0.2s ease,
-			border-color 0.2s ease;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.btn {
-			transition: none;
-		}
-	}
-
-	.btn:hover {
-		transform: translateY(-1px);
-	}
-
-	.btn--primary {
-		background: var(--revision-yellow);
-		color: #0c0b0a;
-	}
-
-	.btn--ghost {
-		border: 1px solid #44403c;
-		background: var(--ink-soft);
-	}
-
-	.hero__stars {
-		font-size: 0.8rem;
-		opacity: 0.85;
-	}
-
 	.hero__editor--mobile {
 		display: none;
 	}
 
-	.hero__video-placeholder {
+	.hero__video-frame {
 		aspect-ratio: 16 / 10;
-		border: 1px dashed #57534e;
+		border: 1px solid #2a3158;
 		border-radius: 0.35rem;
-		display: grid;
-		place-content: center;
-		gap: 0.35rem;
-		color: #a8a29e;
 		background: var(--ink-soft);
-		font-family: 'Courier Prime', monospace;
-		text-transform: uppercase;
-		letter-spacing: 0.12em;
-		font-size: 0.75rem;
+		overflow: hidden;
 	}
 
 	@media (max-width: 768px) {

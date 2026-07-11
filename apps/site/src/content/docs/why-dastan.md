@@ -47,6 +47,7 @@ Dastan optimizes for **ownership** (local files, open source, BYOK AI) over **al
 
 ## Learn more
 
+- [About Dastan](/about) (the name and tradition)
 - [Getting started](/docs/getting-started/)
 - [FAQ & troubleshooting](/docs/faq-troubleshooting/)
-- [Repository](https://github.com/arifkqasim/dastan) <!-- DASTAN_REPO_URL -->
+- [Repository on GitHub](https://github.com/Zoromorake/dastan)

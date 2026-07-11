@@ -81,4 +81,22 @@ export function replaceCurrentBlockText(editor: Editor, nextText: string, cursor
 		.run();
 }
 
+export function focusBlockAtIndex(editor: Editor, blockIndex: number): boolean {
+	const { doc } = editor.state;
+
+	if (blockIndex < 0 || blockIndex >= doc.childCount) {
+		return false;
+	}
+
+	let position = 0;
+
+	for (let index = 0; index < blockIndex; index += 1) {
+		position += doc.child(index).nodeSize;
+	}
+
+	const blockStart = position + 1;
+
+	return editor.chain().focus().setTextSelection(blockStart).run();
+}
+
 export { alignDualDialogueColumns, isDualDialogueActive, toggleDualDialogue } from './dual-dialogue';

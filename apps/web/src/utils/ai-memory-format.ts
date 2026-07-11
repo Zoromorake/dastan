@@ -9,6 +9,10 @@ export interface MemoryFormatOptions {
 
 function filterMemories(memories: AiMemory[], options: MemoryFormatOptions): AiMemory[] {
 	return memories.filter((memory) => {
+		if ((memory.status ?? 'approved') === 'suggested') {
+			return false;
+		}
+
 		if (options.pinnedOnly && !memory.pinned) {
 			return false;
 		}

@@ -6,6 +6,16 @@
     <meta name="theme-color" content="#fbbf24" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>Dastan</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('dastan.theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var dark = stored === 'dark' || ((stored === 'system' || !stored) && prefersDark);
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

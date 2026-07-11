@@ -97,7 +97,7 @@ Scripts, projects, and version history are stored locally in IndexedDB. Optional
 Dastan uses a Supabase edge function as an optional BYOK AI chat proxy in production.
 
 ```bash
-cp .env.example .env.local
+# Optional — create apps/web/.env.local for Supabase / cloud (see CONTRIBUTING.md)
 # Add provider API keys in the app: Settings → AI
 
 supabase login

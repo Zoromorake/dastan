@@ -220,26 +220,26 @@ export function EditorNavigator({
 								: null;
 
 							return (
-							<div key={`${scene.index}-${index}`} className={`${isActive ? theme.modeActive : ''}`}>
-							<button
-								aria-current={isActive ? 'true' : undefined}
-								className={`grid w-full grid-cols-[2.25rem_minmax(0,1fr)] gap-2 px-2 py-2.5 text-left transition ${
-									isActive
-										? 'font-semibold ring-1 ring-inset ring-primary/40'
-										: 'hover:bg-accent/60'
-								}`}
-								type="button"
-								onClick={() => onSceneSelect(scene.index)}
+							<div
+								key={`${scene.index}-${index}`}
+								className={`px-2 py-2.5 ${isActive ? `${theme.modeActive} ring-1 ring-inset ring-primary/40` : 'hover:bg-accent/60'}`}
 							>
-								<span
-									className={`pt-0.5 text-center text-xs font-semibold tabular-nums ${
-										isActive ? 'text-primary' : theme.statusText
+								<button
+									aria-current={isActive ? 'true' : undefined}
+									className={`grid w-full grid-cols-[2.25rem_minmax(0,1fr)] gap-2 text-left transition ${
+										isActive ? 'font-semibold' : ''
 									}`}
+									type="button"
+									onClick={() => onSceneSelect(scene.index)}
 								>
-									{index + 1}
-								</span>
-								<span className="min-w-0">
-									<span className={`flex items-center gap-1 truncate text-sm leading-snug ${isActive ? 'text-foreground' : ''}`}>
+									<span
+										className={`pt-0.5 text-center text-xs font-semibold tabular-nums ${
+											isActive ? 'text-primary' : theme.statusText
+										}`}
+									>
+										{index + 1}
+									</span>
+									<span className={`flex min-w-0 items-center gap-1 truncate text-sm leading-snug ${isActive ? 'text-foreground' : ''}`}>
 										{showStructureLines && structureBeat ? (
 											<span
 												className="inline-block size-2 shrink-0 rounded-full"
@@ -249,24 +249,23 @@ export function EditorNavigator({
 										) : null}
 										{scene.text.length > 0 ? scene.text : 'Untitled scene'}
 									</span>
-									{cast.length > 0 ? (
-										<button
-											type="button"
-											className={`mt-1 flex items-center gap-1 text-[10px] ${theme.statusText}`}
-											onClick={(event) => {
-												event.stopPropagation();
-												setExpandedScenes((current) => ({ ...current, [index]: !expanded }));
-											}}
-										>
-											{expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-											{cast.length} character{cast.length === 1 ? '' : 's'}
-										</button>
-									) : null}
-									{expanded && cast.length > 0 ? (
-										<p className={`mt-1 text-[10px] leading-relaxed ${theme.statusText}`}>{cast.join(', ')}</p>
-									) : null}
-								</span>
-							</button>
+								</button>
+								{cast.length > 0 ? (
+									<button
+										type="button"
+										aria-expanded={expanded}
+										className={`mt-1 ml-10 flex items-center gap-1 text-[10px] ${theme.statusText}`}
+										onClick={() => {
+											setExpandedScenes((current) => ({ ...current, [index]: !expanded }));
+										}}
+									>
+										{expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+										{cast.length} character{cast.length === 1 ? '' : 's'}
+									</button>
+								) : null}
+								{expanded && cast.length > 0 ? (
+									<p className={`mt-1 ml-10 text-[10px] leading-relaxed ${theme.statusText}`}>{cast.join(', ')}</p>
+								) : null}
 							</div>
 							);
 						})}

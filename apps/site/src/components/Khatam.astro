@@ -1,0 +1,30 @@
+---
+import { KHATAM_PATHS, KHATAM_VIEWBOX } from '../lib/khatam';
+
+interface Props {
+	class?: string;
+	size?: string;
+	opacity?: number;
+}
+
+const { class: className, size = '1.1rem', opacity = 1 } = Astro.props;
+---
+
+<svg
+	class:list={['khatam', className]}
+	viewBox={KHATAM_VIEWBOX}
+	fill="none"
+	aria-hidden="true"
+	style={`width: ${size}; height: ${size}; opacity: ${opacity}`}
+>
+	<path d={KHATAM_PATHS[0]} stroke="currentColor" stroke-width="0.55"></path>
+	<path d={KHATAM_PATHS[1]} stroke="currentColor" stroke-width="0.4"></path>
+</svg>
+
+<style>
+	.khatam {
+		display: block;
+		flex-shrink: 0;
+		color: var(--gold);
+	}
+</style>

@@ -1,4 +1,4 @@
-export type HubSection = 'library' | 'shared' | 'trash';
+export type HubSection = 'library' | 'shared' | 'trash' | 'codex';
 
 export type ScriptFilter = 'all' | 'unfiled' | string;
 

@@ -9,12 +9,22 @@ interface ScriptActionsMenuProps {
   onShare: () => void;
   onMove: () => void;
   onTrash: () => void;
+  onSetPoster?: () => void;
+  onRemovePoster?: () => void;
+  hasPoster?: boolean;
 }
 
 export const ScriptActionsMenu = forwardRef<HubItemActionsMenuHandle, ScriptActionsMenuProps>(
-  function ScriptActionsMenu({ title, onRename, onDuplicate, onShare, onMove, onTrash }, ref) {
+  function ScriptActionsMenu(
+    { title, onRename, onDuplicate, onShare, onMove, onTrash, onSetPoster, onRemovePoster, hasPoster = false },
+    ref,
+  ) {
     const items: HubPortalMenuItem[] = [
       { label: 'Rename', onClick: onRename },
+      ...(onSetPoster ? [{ label: hasPoster ? 'Change poster art' : 'Set poster art', onClick: onSetPoster }] : []),
+      ...(hasPoster && onRemovePoster
+        ? [{ label: 'Remove poster art', onClick: onRemovePoster, separatorBefore: true }]
+        : []),
       { label: 'Duplicate', onClick: onDuplicate },
       { label: 'Share', onClick: onShare },
       { label: 'Move to project', onClick: onMove },

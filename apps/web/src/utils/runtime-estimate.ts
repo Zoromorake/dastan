@@ -3,6 +3,16 @@ export function estimateRuntimeMinutes(pageCount: number): number {
 	return Math.max(1, pageCount);
 }
 
+export function formatPageCount(pageCount: number): string {
+	const count = Math.max(0, Math.round(pageCount));
+
+	if (count === 1) {
+		return '1 page';
+	}
+
+	return `${count} pages`;
+}
+
 export function formatRuntimeEstimate(pageCount: number): string {
 	const minutes = estimateRuntimeMinutes(pageCount);
 
@@ -14,5 +24,5 @@ export function formatRuntimeEstimate(pageCount: number): string {
 }
 
 export function formatPageAndRuntime(pageCount: number): string {
-	return `${pageCount} pg · ${formatRuntimeEstimate(pageCount)}`;
+	return `${formatPageCount(pageCount)} · ${formatRuntimeEstimate(pageCount)}`;
 }

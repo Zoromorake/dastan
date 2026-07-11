@@ -1,11 +1,17 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
+export type ShortcutGroup = {
+	title: string;
+	items: Array<[string, string]>;
+};
+
 interface ShortcutsModalProps {
 	open: boolean;
 	onClose: () => void;
+	groups?: ShortcutGroup[];
 }
 
-const shortcutGroups = [
+const editorShortcutGroups: ShortcutGroup[] = [
 	{
 		title: 'Writing',
 		items: [
@@ -35,7 +41,9 @@ const shortcutGroups = [
 	{
 		title: 'Navigation',
 		items: [
+			['⌘K', 'Command palette'],
 			['⌘,', 'Settings'],
+			['?', 'Keyboard shortcuts'],
 		],
 	},
 	{
@@ -49,32 +57,54 @@ const shortcutGroups = [
 			['⌘L', 'Toggle AI chat'],
 			['⌘⇧T', 'Typewriter mode'],
 			['⌘.', 'Focus mode'],
-			['?', 'Keyboard shortcuts'],
 		],
 	},
 ];
 
-export function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
+export const hubShortcutGroups: ShortcutGroup[] = [
+	{
+		title: 'Library',
+		items: [
+			['⌘K', 'Command palette'],
+			['⌘L', 'Toggle AI chat'],
+			['⌘,', 'Settings'],
+			['?', 'Keyboard shortcuts'],
+		],
+	},
+	{
+		title: 'Scripts',
+		items: [
+			['Enter / Space', 'Open focused script'],
+			['Click', 'Open script'],
+		],
+	},
+];
+
+export function ShortcutsModal({ open, onClose, groups = editorShortcutGroups }: ShortcutsModalProps) {
 	return (
 		<Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
 			<DialogContent className="max-w-2xl">
 				<DialogHeader>
-					<DialogTitle>Keyboard Shortcuts</DialogTitle>
-					<DialogDescription>Fast navigation for script writing in Dastan.</DialogDescription>
+					<DialogTitle>Keyboard shortcuts</DialogTitle>
+					<DialogDescription>Common actions available in this view.</DialogDescription>
 				</DialogHeader>
-				<div className="grid gap-4 md:grid-cols-3">
-					{shortcutGroups.map((group) => (
-						<section key={group.title} className="rounded-2xl border p-4">
-							<h3 className="mb-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">{group.title}</h3>
-							<div className="space-y-2 text-sm">
-								{group.items.map(([keys, description]) => (
-									<div key={keys} className="flex items-start justify-between gap-3">
-										<span className="rounded-md border bg-muted px-2 py-1 font-mono text-[11px]">{keys}</span>
-										<span className="text-right text-muted-foreground">{description}</span>
-									</div>
+				<div className="grid gap-6 sm:grid-cols-2">
+					{groups.map((group) => (
+						<div key={group.title}>
+							<h3 className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+								{group.title}
+							</h3>
+							<ul className="space-y-1.5">
+								{group.items.map(([keys, label]) => (
+									<li key={`${group.title}-${keys}`} className="flex items-center justify-between gap-3 text-sm">
+										<span className="text-muted-foreground">{label}</span>
+										<kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+											{keys}
+										</kbd>
+									</li>
 								))}
-							</div>
-						</section>
+							</ul>
+						</div>
 					))}
 				</div>
 			</DialogContent>

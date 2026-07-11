@@ -1,12 +1,17 @@
 import type { JSONContent } from '@tiptap/core';
 import type { ScreenplayWorkspaceData } from '../types';
 import type { AiMemory } from './ai-memory-storage';
+import type { CodexItem } from './codex-storage';
 import type { CollaboratorPresence } from '@dastan/plugin-api';
 import { formatScopedMemories } from './ai-memory-format';
+import { formatRelevantApprovedMemories } from './ai-memory-relevance';
+import { formatCodexForContext } from './codex-format';
 import type { AiInteractionMode } from './ai-interaction-mode';
 import { getInteractionModeInstructions } from './ai-interaction-mode';
 import { toPlainTextScreenplay } from './screenplay-text';
 import { buildSmartScriptContext, MAX_SCRIPT_CHARS } from './ai-context-script';
+import type { ScriptContextSections } from './ai-script-context-options';
+import { defaultScriptContextSections } from './ai-script-context-options';
 
 export { MAX_SCRIPT_CHARS };
 
@@ -16,12 +21,16 @@ export interface AiContextInput {
 	documentContent: JSONContent | null;
 	workspace: ScreenplayWorkspaceData;
 	globalRules: string;
+	documentRules?: string;
 	memories: AiMemory[];
+	codexItems?: CodexItem[];
 	projectId?: string;
 	includeScriptContext: boolean;
 	includeWorkspaceContext: boolean;
+	scriptContextSections?: ScriptContextSections;
 	selectionText?: string | null;
 	activeBlockIndex?: number | null;
+	relevanceQuery?: string;
 	interactionMode?: AiInteractionMode;
 	activeWorkspaceTab?: string | null;
 	activeCollaborators?: CollaboratorPresence[];
@@ -136,7 +145,11 @@ export function buildAiContext(input: AiContextInput): AiContextPayload {
 	];
 
 	if (input.globalRules.trim()) {
-		sections.push(`Writer rules:\n${input.globalRules.trim()}`);
+		sections.push(`Global writer rules:\n${input.globalRules.trim()}`);
+	}
+
+	if (input.documentRules?.trim()) {
+		sections.push(`Script writer rules:\n${input.documentRules.trim()}`);
 	}
 
 	const memoryOptions = {
@@ -163,6 +176,32 @@ export function buildAiContext(input: AiContextInput): AiContextPayload {
 		sections.push(`Pinned script memories:\n${documentMemories}`);
 	}
 
+	const relevantApproved = formatRelevantApprovedMemories(input.memories, {
+		documentId: input.documentId,
+		projectId: input.projectId,
+		relevanceQuery: input.relevanceQuery,
+	});
+
+	if (relevantApproved) {
+		sections.push(`Relevant approved memories:\n${relevantApproved}`);
+	}
+
+	if (input.codexItems && input.codexItems.length > 0) {
+		const codex = formatCodexForContext(input.codexItems, {
+			documentId: input.documentId,
+			projectId: input.projectId,
+			relevanceQuery: input.relevanceQuery,
+		});
+
+		if (codex.styleSection) {
+			sections.push(codex.styleSection);
+		}
+
+		if (codex.referenceSection) {
+			sections.push(codex.referenceSection);
+		}
+	}
+
 	sections.push(`Current script title: "${input.documentTitle}"`);
 
 	if (input.activeWorkspaceTab) {
@@ -181,6 +220,7 @@ export function buildAiContext(input: AiContextInput): AiContextPayload {
 			input.workspace,
 			MAX_SCRIPT_CHARS,
 			input.activeBlockIndex ?? null,
+			input.scriptContextSections ?? defaultScriptContextSections(),
 		);
 
 		if (scriptText.trim()) {

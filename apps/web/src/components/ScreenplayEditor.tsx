@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, MessageSquare } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Loader2, BookMarked, MessageSquare } from 'lucide-react';
 
 import type { Editor, Extensions, JSONContent } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
@@ -25,7 +26,7 @@ import {
 	TextColor,
 	Transition,
 } from '../editor/extensions';
-import { getCurrentBlockIndex, getEditorBlockType, replaceCurrentBlockText, setBlockType } from '../editor/commands';
+import { getCurrentBlockIndex, getEditorBlockType, focusBlockAtIndex, replaceCurrentBlockText, setBlockType } from '../editor/commands';
 import { EditorCommandProvider, type EditorCommands } from '../context/EditorCommandContext';
 import { looksLikeScreenplayText, parseScreenplayInsertText } from '../utils/insert-screenplay-text';
 import { alignDualDialogueColumns } from '../editor/dual-dialogue';
@@ -41,7 +42,19 @@ import type {
 } from '../types';
 import { normalizeScriptNote, normalizeWorkspaceData } from '../types';
 import { computePageBreaks, groupBlocksByPage } from '../utils/page-breaks';
-import { formatPageAndRuntime } from '../utils/runtime-estimate';
+import { formatPageCount, formatRuntimeEstimate } from '../utils/runtime-estimate';
+import { recordBackupExport } from '../utils/backup-nudge';
+import { countPagesFromContent } from '../utils/screenplay-pagination';
+import {
+	detectFadeOutEnding,
+	hasShownFadeOutCelebrationToday,
+	markFadeOutCelebrationShown,
+} from '../utils/fade-out-celebration';
+import { DevelopmentGuide } from './guide/DevelopmentGuide';
+import { FadeOutCelebration } from './FadeOutCelebration';
+import { CommandPalette, useCommandPaletteHotkey, type CommandPaletteItem } from './CommandPalette';
+import { CodexCaptureModal, useCodexCaptureHotkey } from './codex/CodexCaptureModal';
+import { CodexPanel } from './codex/CodexPanel';
 import { recordWordCountDelta, startWritingSession } from '../utils/writing-stats';
 import { getSceneIndexForBlockIndex, moveSceneInContent, splitContentIntoSceneGroups } from '../utils/scene-reorder';
 import { normalizeDocumentLayout } from '../utils/screenplay-layout';
@@ -90,12 +103,15 @@ import { EditorNavigator, type EditorNavigatorSection } from './EditorNavigator'
 import { ScriptActionsMenu } from './ScriptActionsMenu';
 import { ScriptNoteDialog } from './ScriptNoteDialog';
 import { getEditorTheme } from '../utils/editor-theme';
+import { createEphemeralDocument, isEphemeralDocumentId } from '../utils/ephemeral-documents';
+import { findReusableUntitledBlank } from '../utils/untitled-dedupe';
 import { ScreenplayWorkspacePanel } from './ScreenplayWorkspacePanel';
 import { EditorWorkspaceSubNav } from './EditorWorkspaceSubNav';
 import { SmartTypeSuggestions } from './SmartTypeSuggestions';
 import { EditorWorkspaceNav } from './EditorWorkspaceNav';
 import { TitlePagePanel } from './TitlePagePanel';
 import { TopBar } from './TopBar';
+import type { AiSettingsSection } from '../utils/ai-settings-sections';
 import type { SettingsTab, UserThemeSetting } from './UserSettingsPanel';
 import { VersionHistoryDialog } from './VersionHistoryDialog';
 import { getChangedBlockIndices } from '../utils/block-diff';
@@ -170,6 +186,7 @@ interface ScreenplayEditorProps {
 }
 
 export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme, onThemeChange }: ScreenplayEditorProps) {
+	const navigate = useNavigate();
 	const persistence = useScreenplayPersistence(documentId);
 	const {
 		isLoaded: persistenceLoaded,
@@ -201,9 +218,12 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	const [inspectorCollapsed, setInspectorCollapsed] = useState(true);
 	const [pageFitScale, setPageFitScale] = useState(1);
 	const [chatOpen, setChatOpen] = useState(false);
+	const [codexOpen, setCodexOpen] = useState(false);
+	const [codexCaptureOpen, setCodexCaptureOpen] = useState(false);
 	const [pendingAiPrompt, setPendingAiPrompt] = useState<string | null>(null);
 	const [chatSelectionText, setChatSelectionText] = useState<string | undefined>(undefined);
 	const [settingsTabRequest, setSettingsTabRequest] = useState<SettingsTab | null>(null);
+	const [aiSettingsSectionRequest, setAiSettingsSectionRequest] = useState<AiSettingsSection | null>(null);
 	const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 	const [scriptNoteOpen, setScriptNoteOpen] = useState(false);
 	const [findReplaceOpen, setFindReplaceOpen] = useState(false);
@@ -221,6 +241,8 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	const [smartTypeHighlightIndex, setSmartTypeHighlightIndex] = useState(0);
 	const [emptyElementMenuOpen, setEmptyElementMenuOpen] = useState(false);
 	const [emptyElementHighlightIndex, setEmptyElementHighlightIndex] = useState(0);
+	const [fadeOutCelebrationOpen, setFadeOutCelebrationOpen] = useState(false);
+	const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 	const editorKeyboardContextRef = useRef<EditorKeyboardContext>({
 		smartType: {
 			blockType: null,
@@ -241,6 +263,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	});
 	const isDark = resolvedTheme === 'dark';
 	const editorTheme = useMemo(() => getEditorTheme(isDark), [isDark]);
+	const isEphemeralDraft = isEphemeralDocumentId(documentId);
 
 	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent) => {
@@ -286,7 +309,6 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 	const setCurrentDocument = useScreenplayStore((state) => state.setCurrentDocument);
 	const setDocumentList = useScreenplayStore((state) => state.setDocumentList);
 	const setFocusMode = useScreenplayStore((state) => state.setFocusMode);
-	const switchDocument = useScreenplayStore((state) => state.switchDocument);
 
 	const documentLayout = useMemo(
 		() => normalizeDocumentLayout(currentDocument?.layout),
@@ -528,8 +550,8 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 					autofocus: false,
 					editorProps: {
 						attributes: {
-							class: 'focus:outline-none space-y-3 text-stone-900 font-mono',
-							style: 'color: #1c1917; font-family: Courier Prime, Courier New, Courier, monospace;',
+							class: 'focus:outline-none space-y-3 font-mono',
+							style: 'font-family: Courier Prime, Courier New, Courier, monospace;',
 							spellcheck: 'true',
 						},
 						handleKeyDown: handleEditorKeyDown,
@@ -714,6 +736,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 
 		const root = editor.view.dom;
 		root.classList.toggle('script-editor--dark', isDark);
+		root.classList.remove('text-stone-900');
 		root.classList.toggle('script-editor--scene-numbers', documentLayout.showSceneNumbers);
 		root.classList.toggle(
 			'script-editor--character-highlight',
@@ -851,10 +874,10 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			return undefined;
 		}
 
-		const base = formatPageAndRuntime(pagedPageCount);
+		const base = `${formatPageCount(pagedPageCount)} · ${formatRuntimeEstimate(pagedPageCount)}`;
 
 		if (documentLayout.pageViewMode === 'paged') {
-			return `${base} · approx. page preview`;
+			return `${base} · preview`;
 		}
 
 		return base;
@@ -1063,13 +1086,46 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 		}
 
 		const focusTimer = window.setTimeout(() => {
-			editor?.chain().focus('end').run();
+			if (!editor) {
+				return;
+			}
+
+			const resumeKey = `dastan.resume.${documentId}`;
+			const stored = sessionStorage.getItem(resumeKey);
+			sessionStorage.removeItem(resumeKey);
+
+			let blockIndex = currentDocument?.lastCursorBlockIndex;
+
+			if (stored !== null) {
+				const parsed = Number(stored);
+
+				if (Number.isFinite(parsed)) {
+					blockIndex = parsed;
+				}
+			}
+
+			if (typeof blockIndex === 'number' && focusBlockAtIndex(editor, blockIndex)) {
+				return;
+			}
+
+			editor.chain().focus('end').run();
 		}, 0);
 
 		return () => {
 			window.clearTimeout(focusTimer);
 		};
-	}, [workspaceMode, currentDocument?.id, editor, isEditorReady]);
+	}, [workspaceMode, currentDocument?.id, currentDocument?.lastCursorBlockIndex, documentId, editor, isEditorReady]);
+
+	useEffect(() => {
+		if (!currentDocument || hasShownFadeOutCelebrationToday(currentDocument.id)) {
+			return;
+		}
+
+		if (detectFadeOutEnding(currentDocument.content)) {
+			setFadeOutCelebrationOpen(true);
+			markFadeOutCelebrationShown(currentDocument.id);
+		}
+	}, [currentDocument, currentDocument?.content, currentDocument?.id]);
 
 	useEffect(() => {
 		const handleTypewriterModeChange = (event: Event) => {
@@ -1407,9 +1463,150 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			link.click();
 			link.remove();
 			URL.revokeObjectURL(url);
+			recordBackupExport();
 		},
 		[currentDocument],
 	);
+
+	useCommandPaletteHotkey(() => setCommandPaletteOpen(true));
+	useCodexCaptureHotkey(() => setCodexCaptureOpen(true));
+
+	const commandPaletteItems = useMemo((): CommandPaletteItem[] => {
+		if (!currentDocument) {
+			return [];
+		}
+
+		const items: CommandPaletteItem[] = [
+			{
+				id: 'back-hub',
+				label: 'Back to hub',
+				group: 'Navigate',
+				run: () => {
+					void persistenceForceSave().then(onBackToHub);
+				},
+			},
+			{
+				id: 'toggle-chat',
+				label: chatOpen ? 'Close AI panel' : 'Open AI panel',
+				keywords: 'assistant chat cmd+l',
+				group: 'AI',
+				run: () => setChatOpen((current) => !current),
+			},
+			{
+				id: 'toggle-codex',
+				label: codexOpen ? 'Close Codex' : 'Open Codex',
+				keywords: 'notes style reference',
+				group: 'Codex',
+				run: () => setCodexOpen((current) => !current),
+			},
+			{
+				id: 'codex-capture',
+				label: 'Capture to Codex',
+				keywords: 'note style cmd+shift+n',
+				group: 'Codex',
+				run: () => setCodexCaptureOpen(true),
+			},
+			{
+				id: 'find-replace',
+				label: 'Find and replace',
+				keywords: 'search cmd+f',
+				group: 'Edit',
+				run: () => setFindReplaceOpen(true),
+			},
+			{
+				id: 'toggle-focus',
+				label: focusMode ? 'Exit focus mode' : 'Enter focus mode',
+				group: 'View',
+				run: () => setFocusMode(!focusMode),
+			},
+			{
+				id: 'toggle-typewriter',
+				label: typewriterMode ? 'Disable typewriter mode' : 'Enable typewriter mode',
+				group: 'View',
+				run: handleToggleTypewriterMode,
+			},
+			{
+				id: 'toggle-sidebar',
+				label: sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar',
+				group: 'View',
+				run: () => setSidebarCollapsed((current) => !current),
+			},
+			{
+				id: 'version-history',
+				label: 'Open version history',
+				group: 'Script',
+				run: () => setVersionHistoryOpen(true),
+			},
+			{
+				id: 'export-fountain',
+				label: 'Export Fountain',
+				group: 'Export',
+				run: () => handleExport('fountain'),
+			},
+			{
+				id: 'export-text',
+				label: 'Export plain text',
+				group: 'Export',
+				run: () => handleExport('text'),
+			},
+			{
+				id: 'export-fdx',
+				label: 'Export Final Draft (.fdx)',
+				group: 'Export',
+				run: () => handleExport('fdx'),
+			},
+			{
+				id: 'export-pdf',
+				label: 'Export PDF',
+				group: 'Export',
+				run: () => handleExport('pdf'),
+			},
+			{
+				id: 'workspace-script',
+				label: 'Switch to Script workspace',
+				group: 'Workspace',
+				run: () => setWorkspaceMode('script'),
+			},
+			{
+				id: 'workspace-develop',
+				label: 'Switch to Develop workspace',
+				group: 'Workspace',
+				run: () => setWorkspaceMode('develop'),
+			},
+			{
+				id: 'workspace-world',
+				label: 'Switch to World workspace',
+				group: 'Workspace',
+				run: () => setWorkspaceMode('world'),
+			},
+		];
+
+		for (const [index, scene] of sceneHeadings.entries()) {
+			items.push({
+				id: `scene-${index}`,
+				label: `Go to scene ${index + 1}: ${scene.text}`,
+				keywords: scene.text,
+				group: 'Scenes',
+				run: () => scrollToScene(index),
+			});
+		}
+
+		return items;
+	}, [
+		chatOpen,
+		codexOpen,
+		currentDocument,
+		focusMode,
+		handleExport,
+		handleToggleTypewriterMode,
+		onBackToHub,
+		persistenceForceSave,
+		sceneHeadings,
+		scrollToScene,
+		setFocusMode,
+		sidebarCollapsed,
+		typewriterMode,
+	]);
 
 	const handleImport = useCallback(
 		async (file: File) => {
@@ -1459,17 +1656,20 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 
 	const handleDocumentCreate = useCallback(async () => {
 		await persistenceForceSave();
-		const createdDocument = await createDocument('Untitled');
-		const documents = await refreshDocumentList();
-		setCurrentDocument(createdDocument);
-		setWorkspaceMode('script');
+		const reusable = findReusableUntitledBlank(documentList);
 
-		if (!documents.some((document) => document.id === createdDocument.id)) {
-			setDocumentList([createdDocument, ...documents]);
+		if (reusable) {
+			await setLastDocumentId(reusable.id);
+			navigate(`/script/${reusable.id}`);
+			return;
 		}
 
-		editor?.chain().focus('end').run();
-	}, [editor, persistenceForceSave, refreshDocumentList, setCurrentDocument, setDocumentList]);
+		const createdDocument = createEphemeralDocument({
+			projectId: currentDocument?.projectId,
+		});
+		await setLastDocumentId(createdDocument.id);
+		navigate(`/script/${createdDocument.id}`);
+	}, [currentDocument?.projectId, documentList, navigate, persistenceForceSave]);
 
 	const handleDocumentSelect = useCallback(
 		async (id: string) => {
@@ -1480,18 +1680,10 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			}
 
 			await persistenceForceSave();
-			const documents = await refreshDocumentList();
-
-			if (!documents.some((document) => document.id === id)) {
-				return;
-			}
-
-			switchDocument(id);
 			await setLastDocumentId(id);
-			setWorkspaceMode('script');
-			editor?.chain().focus('end').run();
+			navigate(`/script/${id}`);
 		},
-		[currentDocument?.id, editor, persistenceForceSave, refreshDocumentList, switchDocument],
+		[currentDocument?.id, editor, navigate, persistenceForceSave],
 	);
 
 	const handleDocumentDelete = useCallback(
@@ -1508,15 +1700,16 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 			const documents = await refreshDocumentList();
 
 			if (documents.length === 0) {
+				onBackToHub();
 				return;
 			}
 
 			if (deletingCurrent) {
-				setCurrentDocument(documents[0]);
 				await setLastDocumentId(documents[0].id);
+				navigate(`/script/${documents[0].id}`);
 			}
 		},
-		[currentDocument?.id, documentList, refreshDocumentList, setCurrentDocument],
+		[currentDocument?.id, documentList, navigate, onBackToHub, refreshDocumentList],
 	);
 
 	const handleSmartTypeSelect = useCallback(
@@ -1867,6 +2060,9 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 
 	const renderPagedView = (
 		<div className="flex flex-col gap-8" style={{ width: SCRIPT_PAGE_WIDTH_PX }}>
+			<p className={`text-center text-[10px] uppercase tracking-[0.14em] ${editorTheme.statusText}`}>
+				Page preview · approximate layout
+			</p>
 			{renderTitlePageSheet}
 
 			<div
@@ -1890,6 +2086,11 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 									className={editorTheme.scriptPage}
 									style={{ width: SCRIPT_PAGE_WIDTH_PX, height: SCRIPT_PAGE_HEIGHT_PX, ...pageBackgroundStyle }}
 								/>
+								{pageIndex === 0 ? (
+									<span className="absolute top-2 left-2 z-30 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-white/90 uppercase">
+										Preview
+									</span>
+								) : null}
 								<ScriptPageChrome
 									documentTitle={currentDocument?.title ?? ''}
 									isDark={isDark}
@@ -1973,7 +2174,11 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				workspaceMode={workspaceMode}
 				onWorkspaceModeChange={setWorkspaceMode}
 				settingsTabRequest={settingsTabRequest}
-				onSettingsTabRequestHandled={() => setSettingsTabRequest(null)}
+				aiSettingsSectionRequest={aiSettingsSectionRequest}
+				onSettingsTabRequestHandled={() => {
+					setSettingsTabRequest(null);
+					setAiSettingsSectionRequest(null);
+				}}
 				onOpenFindReplace={() => setFindReplaceOpen(true)}
 				typewriterMode={typewriterMode}
 				onToggleTypewriterMode={handleToggleTypewriterMode}
@@ -1981,7 +2186,45 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				sprintChip={<WritingSprintChip isDark={isDark} documentContent={currentDocument.content} />}
 				collaborators={documentCollaboration.peers}
 				collaborationActive={documentCollaboration.collaborationActive}
+				isEphemeralDraft={isEphemeralDraft}
 			/>
+
+			{isEphemeralDraft ? (
+				<div
+					className={`flex shrink-0 items-center justify-between gap-3 border-b px-4 py-1.5 text-xs ${
+						isDark ? 'border-amber-500/30 bg-amber-500/10 text-amber-100' : 'border-amber-200 bg-amber-50 text-amber-900'
+					}`}
+					role="status"
+				>
+					<span>Draft not in library yet — start writing to save it on this device.</span>
+					<span className="shrink-0 opacity-70">Refresh keeps this tab’s draft</span>
+				</div>
+			) : null}
+
+			{!documentWorkspace.guide?.active &&
+			documentWorkspace.guide?.furthestStep &&
+			documentWorkspace.guide.furthestStep !== 'finish' ? (
+				<div
+					className={`flex shrink-0 items-center justify-between gap-3 border-b px-4 py-1.5 text-xs ${
+						isDark ? 'border-gold/20 bg-gold/10 text-gold' : 'border-amber-200 bg-amber-50 text-amber-900'
+					}`}
+					role="status"
+				>
+					<span>Development guide in progress — pick up where you left off.</span>
+					<button
+						className="shrink-0 rounded-md border border-current/30 px-2 py-0.5 font-medium uppercase tracking-[0.12em]"
+						type="button"
+						onClick={() => {
+							handleWorkspaceChange({
+								...documentWorkspace,
+								guide: { active: true, furthestStep: documentWorkspace.guide?.furthestStep ?? 'spark' },
+							});
+						}}
+					>
+						Resume guide
+					</button>
+				</div>
+			) : null}
 
 			{!focusMode && workspaceMode === 'script' ? (
 				<FindReplacePanel
@@ -2018,7 +2261,18 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 						onDevelopSubTabChange={setDevelopSubTab}
 						onWorldSubTabChange={setWorldSubTab}
 					/>
-					<div className="absolute right-4 flex shrink-0 items-center">
+					<div className="absolute right-4 flex shrink-0 items-center gap-2">
+						<button
+							className={`shrink-0 ${codexOpen ? editorTheme.chatToggleActive : editorTheme.chatToggle}`}
+							type="button"
+							aria-label="Toggle Codex"
+							aria-pressed={codexOpen}
+							title="Codex"
+							onClick={() => setCodexOpen((currentValue) => !currentValue)}
+						>
+							<BookMarked size={14} />
+							Codex
+						</button>
 						<button
 							className={`shrink-0 ${chatOpen ? editorTheme.chatToggleActive : editorTheme.chatToggle}`}
 							type="button"
@@ -2078,6 +2332,17 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 							onMoveSceneUp={() => handleMoveScene('up')}
 							onMoveSceneDown={() => handleMoveScene('down')}
 						/>
+						<button
+							className={`shrink-0 ${codexOpen ? editorTheme.chatToggleActive : editorTheme.chatToggle}`}
+							type="button"
+							aria-label="Toggle Codex"
+							aria-pressed={codexOpen}
+							title="Codex"
+							onClick={() => setCodexOpen((currentValue) => !currentValue)}
+						>
+							<BookMarked size={14} />
+							Codex
+						</button>
 						<button
 							className={`shrink-0 ${chatOpen ? editorTheme.chatToggleActive : editorTheme.chatToggle}`}
 							type="button"
@@ -2204,9 +2469,10 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 							}}
 							resolvedTheme={resolvedTheme}
 							onClose={() => setChatOpen(false)}
-							onOpenSettings={() => {
+							onOpenSettings={(section) => {
 								setChatOpen(false);
 								setSettingsTabRequest('ai');
+								setAiSettingsSectionRequest(section ?? null);
 							}}
 							collaborationRoomId={documentCollaboration.roomId}
 							activeCollaborators={documentCollaboration.peers}
@@ -2214,6 +2480,17 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 						/>
 						</Suspense>
 					</ErrorBoundary>
+				) : null}
+
+				{!focusMode ? (
+					<CodexPanel
+						open={codexOpen}
+						isDark={isDark}
+						documentId={currentDocument.id}
+						projectId={currentDocument.projectId}
+						onClose={() => setCodexOpen(false)}
+						onOpenCapture={() => setCodexCaptureOpen(true)}
+					/>
 				) : null}
 			</div>
 
@@ -2264,6 +2541,7 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				onClose={() => setPdfExportOpen(false)}
 				onConfirm={(includeChangeMarks) => {
 					void exportPdf(includeChangeMarks);
+					recordBackupExport();
 				}}
 			/>
 
@@ -2281,6 +2559,56 @@ export function ScreenplayEditor({ documentId, onBackToHub, theme, resolvedTheme
 				onRestored={() => {
 					void handleVersionRestored();
 				}}
+			/>
+
+			{documentWorkspace.guide?.active ? (
+				<DevelopmentGuide
+					document={currentDocument}
+					isDark={isDark}
+					onComplete={() => {
+						setWorkspaceMode('script');
+						persistenceQueueSave();
+					}}
+					onContentChange={(content) => {
+						setDocumentContent(content);
+						persistenceQueueSave();
+					}}
+					onExit={() => {
+						handleWorkspaceChange({
+							...documentWorkspace,
+							guide: { active: false, furthestStep: documentWorkspace.guide?.furthestStep ?? 'spark' },
+						});
+					}}
+					onWorkspaceChange={handleWorkspaceChange}
+				/>
+			) : null}
+
+			<FadeOutCelebration
+				draftLabel={documentLayout.revisionModeActive ? 'Revision draft' : 'Draft'}
+				open={fadeOutCelebrationOpen}
+				pageCount={countPagesFromContent(currentDocument.content)}
+				reducedMotion={window.matchMedia('(prefers-reduced-motion: reduce)').matches}
+				title={currentDocument.title || 'Untitled'}
+				onDismiss={() => setFadeOutCelebrationOpen(false)}
+				onSaveCheckpoint={() => {
+					void createManualVersionSnapshot(currentDocument, 'Draft complete');
+					setFadeOutCelebrationOpen(false);
+				}}
+			/>
+
+			<CommandPalette
+				items={commandPaletteItems}
+				open={commandPaletteOpen}
+				onOpenChange={setCommandPaletteOpen}
+			/>
+
+			<CodexCaptureModal
+				open={codexCaptureOpen}
+				onOpenChange={setCodexCaptureOpen}
+				defaultScope="document"
+				defaultType="style"
+				documentId={currentDocument.id}
+				projectId={currentDocument.projectId}
 			/>
 
 	</div>

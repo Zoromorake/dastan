@@ -37,6 +37,17 @@ describe('ai-memory-format', () => {
 		expect(formatScopedMemories(memories, 'document', { documentId: 'doc-1', pinnedOnly: true })).not.toContain('Other script');
 	});
 
+	it('excludes suggested memories from context', () => {
+		const memories = [
+			baseMemory({ id: 's1', scope: 'global', content: 'Suggested', pinned: false, status: 'suggested' }),
+			baseMemory({ id: 'a1', scope: 'global', content: 'Approved', pinned: true, status: 'approved' }),
+		];
+
+		const formatted = formatScopedMemories(memories, 'global', { pinnedOnly: true });
+		expect(formatted).toContain('Approved');
+		expect(formatted).not.toContain('Suggested');
+	});
+
 	it('counts scoped memories', () => {
 		const memories = [
 			baseMemory({ id: 'g1', scope: 'global', pinned: true }),

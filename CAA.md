@@ -6,7 +6,7 @@ Thank you for your interest in contributing to Dastan ("We" or "Us").
 
 This contributor agreement ("Agreement") documents the rights granted by contributors to Us. To make this document effective, please sign it electronically by commenting on your pull request as described in [CONTRIBUTING.md](CONTRIBUTING.md). This is a legally binding document, so please read it carefully before agreeing to it.
 
-> **Maintainer configuration:** Replace `Dastan Contributors` and `[JURISDICTION]` below with your legal entity and governing law before the repository is opened to external contributors. See `future-tasks.md`.
+> **Maintainer configuration:** Assignee and governing law are set below. See `future-tasks.md` for any remaining legal housekeeping.
 
 ## 1. Definitions
 
@@ -82,7 +82,7 @@ TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL YOU OR US BE
 
 ## 6. Miscellaneous
 
-6.1 This Agreement will be governed by and construed in accordance with the laws of [JURISDICTION] excluding its conflicts of law provisions.
+6.1 This Agreement will be governed by and construed in accordance with the laws of the State of Texas excluding its conflicts of law provisions.
 
 6.2 This Agreement sets out the entire agreement between You and Us for Your Contributions to Us and overrides all other agreements or understandings.
 
@@ -96,4 +96,4 @@ TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL YOU OR US BE
 
 Based on the [Harmony Individual Contributor Assignment Agreement v1.0](https://www.harmonyagreements.org/agreements.html). Harmony template text is licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
 
-**Us (assignee):** Dastan Contributors
+**Us (assignee):** Arif Qasim

@@ -6,9 +6,12 @@ dist/
 apps/*/dist/
 packages/*/dist/
 
-# Environment
+# Environment (never commit)
 .env
+.env.example
 .env.local
+.env.production
+.env.development
 .env.*.local
 
 # Editor / IDE
@@ -34,3 +37,6 @@ cloud/
 coverage/
 test-results/
 playwright-report/
+
+checklist.md
+future-tasks.md

@@ -10,10 +10,11 @@ export default {
 				sans: ['Inter', 'system-ui', 'sans-serif'],
 			},
 			colors: {
+				gold: '#c9a227',
 				ink: {
-					DEFAULT: '#0c0b0a',
-					soft: '#141210',
-					muted: '#1c1916',
+					DEFAULT: '#0b1026',
+					soft: '#0f1535',
+					muted: '#151c3d',
 				},
 				paper: {
 					DEFAULT: '#f4f0e6',

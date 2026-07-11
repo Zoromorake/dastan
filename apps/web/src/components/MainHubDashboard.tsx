@@ -11,17 +11,27 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { HubWelcome } from './hub/HubWelcome';
 import { NewScriptMenu } from './hub/NewScriptMenu';
 import { HubFolderHeader } from './hub/HubFolderHeader';
-import { HubProjectsGrid } from './hub/HubProjectsGrid';
-import { HubScriptsPanel } from './hub/HubScriptsPanel';
+import { HubSlateView } from './hub/HubSlateView';
+import { HubFilePreviewDialog } from './hub/HubFilePreviewDialog';
+import { downloadHubFile, canPreviewHubFile, isHubScript } from '../utils/hub-item-kind';
 import { HubSharedPanel, HubTrashPanel } from './hub/HubSectionPanels';
+import { HubCodexPanel } from './hub/HubCodexPanel';
 import { HubShell } from './hub/HubShell';
 import type { FileViewMode, HubSection } from './hub/types';
+import { CodexCaptureModal, useCodexCaptureHotkey } from './codex/CodexCaptureModal';
 import { loadPenName, loadProfileImage } from '../utils/hub-utils';
+import { loadHubFileViewMode, setHubFileViewMode } from '../utils/user-settings';
 import { getShareContacts, type ShareContact } from '../utils/share-contacts';
 import { getSharedScripts, removeSharedScript, type SharedScriptEntry } from '../utils/shared-library';
 import { useHubData } from '../hooks/useHubData';
 import { useHubDialogs } from '../hooks/useHubDialogs';
 import { ConfirmDialog } from './ConfirmDialog';
+import { CommandPalette, useCommandPaletteHotkey, type CommandPaletteItem } from './CommandPalette';
+import { HubSweepNotice } from './hub/HubSweepNotice';
+import { HubBackupNudge } from './hub/HubBackupNudge';
+import { restoreDocument } from '../utils/screenplay-storage';
+import { ShortcutsModal, hubShortcutGroups } from './ShortcutsModal';
+import { dismissBackupNudge, shouldShowBackupNudge } from '../utils/backup-nudge';
 
 interface MainHubDashboardProps {
   onOpenDocument: (id: string) => void;
@@ -42,7 +52,7 @@ export function MainHubDashboard({
 }: MainHubDashboardProps) {
   const [searchValue, setSearchValue] = useState('');
   const [activeSection, setActiveSection] = useState<HubSection>('library');
-  const [fileViewMode, setFileViewMode] = useState<FileViewMode>('list');
+  const [fileViewMode, setFileViewMode] = useState<FileViewMode>(() => loadHubFileViewMode());
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialProjectId);
   const [selectedLibraryProjectId, setSelectedLibraryProjectId] = useState<string | null>(null);
   const [selectedLibraryDocumentId, setSelectedLibraryDocumentId] = useState<string | null>(null);
@@ -52,6 +62,12 @@ export function MainHubDashboard({
   const [profileImageDataUrl, setProfileImageDataUrl] = useState<string | null>(() => loadProfileImage());
   const [sharedEntries, setSharedEntries] = useState<SharedScriptEntry[]>(() => getSharedScripts());
   const [shareContacts, setShareContacts] = useState<ShareContact[]>(() => getShareContacts());
+  const [sweptDocuments, setSweptDocuments] = useState<ScreenplayDocumentRecord[]>([]);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [codexCaptureOpen, setCodexCaptureOpen] = useState(false);
+  const [previewHubFile, setPreviewHubFile] = useState<ScreenplayDocumentRecord | null>(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [backupNudgeVisible, setBackupNudgeVisible] = useState(false);
 
   const isDark = resolvedTheme === 'dark';
   const refreshProjectsRef = useRef<() => Promise<ScreenplayProjectRecord[]>>(async () => []);
@@ -77,12 +93,46 @@ export function MainHubDashboard({
     setEditingTitle('');
   }, []);
 
+  const handleOpenDocumentFromHub = useCallback(
+    (documentId: string, options?: { blockIndex?: number }) => {
+      setSelectedLibraryProjectId(null);
+      setSelectedLibraryDocumentId(null);
+
+      if (typeof options?.blockIndex === 'number') {
+        sessionStorage.setItem(`dastan.resume.${documentId}`, String(options.blockIndex));
+      }
+
+      onOpenDocument(documentId);
+    },
+    [onOpenDocument],
+  );
+
+  const handleOpenHubFile = useCallback((document: ScreenplayDocumentRecord) => {
+    if (canPreviewHubFile(document)) {
+      setPreviewHubFile(document);
+      return;
+    }
+
+    downloadHubFile(document);
+  }, []);
+
+  const handleAfterRefresh = useCallback(() => {
+    setPenName(loadPenName());
+    setProfileImageDataUrl(loadProfileImage());
+    setSharedEntries(getSharedScripts());
+    setShareContacts(getShareContacts());
+  }, []);
+
+  const handleSweep = useCallback((documents: ScreenplayDocumentRecord[]) => {
+    setSweptDocuments(documents);
+  }, []);
+
   const hubData = useHubData({
     selectedProjectId,
     searchValue,
     editingDocumentId,
     editingTitle,
-    onOpenDocument,
+    onOpenDocument: handleOpenDocumentFromHub,
     onNavigateToProject,
     openFolder,
     showAlert: hubDialogs.showAlert,
@@ -93,12 +143,8 @@ export function MainHubDashboard({
     projectInfoProject: hubDialogs.projectInfoProject,
     clearProjectInfo: hubDialogs.clearProjectInfo,
     clearEditing: cancelDocumentRename,
-    onAfterRefresh: () => {
-      setPenName(loadPenName());
-      setProfileImageDataUrl(loadProfileImage());
-      setSharedEntries(getSharedScripts());
-      setShareContacts(getShareContacts());
-    },
+    onAfterRefresh: handleAfterRefresh,
+    onSweep: handleSweep,
   });
 
   refreshProjectsRef.current = hubData.refreshProjects;
@@ -111,6 +157,7 @@ export function MainHubDashboard({
     loading,
     loadError,
     handleCreateScratch,
+    handleStartGuide,
     handleCreateTemplate,
     handleUploadFile,
     handleSoftDelete,
@@ -122,6 +169,8 @@ export function MainHubDashboard({
     handlePermanentDelete,
     handlePermanentDeleteProject,
     commitDocumentRename,
+    updateDocumentPoster,
+    handleAddHubFile,
     handleMoveDocument,
     handleSaveProjectInfo,
     moveDocument,
@@ -134,6 +183,15 @@ export function MainHubDashboard({
     libraryBreadcrumbs,
     getDocumentLocationLabel,
   } = hubData;
+
+  const handleAddHubFiles = useCallback(
+    (files: File[]) => {
+      for (const file of files) {
+        void handleAddHubFile(file);
+      }
+    },
+    [handleAddHubFile],
+  );
 
   const {
     confirmDialog,
@@ -166,6 +224,64 @@ export function MainHubDashboard({
     closeMoveDialog,
   } = hubDialogs;
 
+  useCommandPaletteHotkey(() => setCommandPaletteOpen(true));
+  useCodexCaptureHotkey(() => setCodexCaptureOpen(true));
+
+  const commandPaletteItems: CommandPaletteItem[] = [
+    ...filteredDocuments.filter(isHubScript).map((document) => ({
+      id: `open-${document.id}`,
+      label: `Open ${document.title || 'Untitled'}`,
+      keywords: document.title,
+      group: 'Scripts',
+      run: () => handleOpenDocumentFromHub(document.id),
+    })),
+    {
+      id: 'new-script',
+      label: 'New script',
+      group: 'Commands',
+      run: () => {
+        void handleCreateScratch();
+      },
+    },
+    {
+      id: 'start-guide',
+      label: 'Start with a guide',
+      group: 'Commands',
+      run: () => {
+        void handleStartGuide();
+      },
+    },
+    {
+      id: 'open-codex',
+      label: 'Open Codex',
+      keywords: 'notes style reference',
+      group: 'Commands',
+      run: () => setActiveSection('codex'),
+    },
+    {
+      id: 'codex-capture',
+      label: 'Capture to Codex',
+      keywords: 'note style cmd+shift+n',
+      group: 'Commands',
+      run: () => setCodexCaptureOpen(true),
+    },
+    {
+      id: 'open-settings',
+      label: 'Open settings',
+      group: 'Commands',
+      run: () => {
+        setSettingsInitialTab('preferences');
+        openSettings();
+      },
+    },
+    {
+      id: 'open-trash',
+      label: 'Open trash',
+      group: 'Commands',
+      run: () => setActiveSection('trash'),
+    },
+  ];
+
   useEffect(() => {
     setSelectedProjectId(initialProjectId ?? null);
 
@@ -195,14 +311,10 @@ export function MainHubDashboard({
     setSelectedLibraryProjectId(null);
   }, []);
 
-  const handleOpenDocumentFromHub = useCallback(
-    (documentId: string) => {
-      setSelectedLibraryProjectId(null);
-      setSelectedLibraryDocumentId(null);
-      onOpenDocument(documentId);
-    },
-    [onOpenDocument],
-  );
+  const handleFileViewModeChange = useCallback((mode: FileViewMode) => {
+    setFileViewMode(mode);
+    setHubFileViewMode(mode);
+  }, []);
 
   const startDocumentRename = useCallback((document: ScreenplayDocumentRecord) => {
     setEditingDocumentId(document.id);
@@ -226,6 +338,12 @@ export function MainHubDashboard({
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'l') {
         event.preventDefault();
         setChatOpen((current) => !current);
+        return;
+      }
+
+      if (event.key === '?' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        setShortcutsOpen(true);
       }
     };
 
@@ -234,6 +352,10 @@ export function MainHubDashboard({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [openSettings, setChatOpen]);
+
+  useEffect(() => {
+    setBackupNudgeVisible(shouldShowBackupNudge(documents.length > 0));
+  }, [documents.length]);
 
   if (loadError) {
     return (
@@ -255,38 +377,42 @@ export function MainHubDashboard({
 
   return (
     <>
-      <HubShell
-        isDark={isDark}
-        activeSection={activeSection}
-        trashedCount={trashedDocuments.length + trashedProjects.length}
-        penName={penName}
-        profileImageDataUrl={profileImageDataUrl}
-        searchValue={searchValue}
-        breadcrumbs={activeSection === 'library' ? libraryBreadcrumbs : []}
-        chatOpen={chatOpen}
-        onSearchChange={setSearchValue}
-        onSectionChange={setActiveSection}
-        onOpenSettings={openSettings}
-        onToggleChat={() => setChatOpen((current) => !current)}
-        headerActions={
-          activeSection === 'library' ? (
-            <NewScriptMenu
-              isDark={isDark}
-              size="sm"
-              appearance="outline"
-              onStartScratch={() => {
-                void handleCreateScratch();
-              }}
-              onCreateTemplate={(template) => {
-                void handleCreateTemplate(template);
-              }}
-              onImport={(file) => {
-                void handleUploadFile(file);
-              }}
-            />
-          ) : null
-        }
-      >
+      <div className={`flex h-screen overflow-hidden bg-background text-foreground ${isDark ? 'dark' : ''}`}>
+        <HubShell
+          isDark={isDark}
+          activeSection={activeSection}
+          trashedCount={trashedDocuments.length + trashedProjects.length}
+          penName={penName}
+          profileImageDataUrl={profileImageDataUrl}
+          searchValue={searchValue}
+          breadcrumbs={activeSection === 'library' ? libraryBreadcrumbs : []}
+          chatOpen={chatOpen}
+          onSearchChange={setSearchValue}
+          onSectionChange={setActiveSection}
+          onOpenSettings={openSettings}
+          onToggleChat={() => setChatOpen((current) => !current)}
+          headerActions={
+            activeSection === 'library' ? (
+              <NewScriptMenu
+                isDark={isDark}
+                size="sm"
+                appearance="outline"
+                onStartScratch={() => {
+                  void handleCreateScratch();
+                }}
+                onStartGuide={() => {
+                  void handleStartGuide();
+                }}
+                onCreateTemplate={(template) => {
+                  void handleCreateTemplate(template);
+                }}
+                onImport={(file) => {
+                  void handleUploadFile(file);
+                }}
+              />
+            ) : null
+          }
+        >
         {loading ? (
           <div className="space-y-4 py-2">
             <div className="h-8 w-48 animate-pulse rounded-lg bg-muted" />
@@ -298,11 +424,37 @@ export function MainHubDashboard({
           </div>
         ) : activeSection === 'library' ? (
           <div className="space-y-6">
+            <HubSweepNotice
+              count={sweptDocuments.length}
+              isDark={isDark}
+              onDismiss={() => setSweptDocuments([])}
+              onUndo={() => {
+                void (async () => {
+                  for (const document of sweptDocuments) {
+                    await restoreDocument(document.id);
+                  }
+                  setSweptDocuments([]);
+                  await hubData.refreshAll();
+                })();
+              }}
+            />
+            {backupNudgeVisible ? (
+              <HubBackupNudge
+                isDark={isDark}
+                onDismiss={() => {
+                  dismissBackupNudge();
+                  setBackupNudgeVisible(false);
+                }}
+              />
+            ) : null}
             {documents.length === 0 && projects.length === 0 ? (
               <HubWelcome
                 isDark={isDark}
                 onStartScratch={() => {
                   void handleCreateScratch();
+                }}
+                onStartGuide={() => {
+                  void handleStartGuide();
                 }}
                 onCreateTemplate={(template) => {
                   void handleCreateTemplate(template);
@@ -328,62 +480,67 @@ export function MainHubDashboard({
                   />
                 ) : null}
 
-                <HubProjectsGrid
-                  title={selectedProject ? 'Subfolders' : 'Projects'}
-                  projects={visibleProjects}
-                  documents={documents}
+                <HubSlateView
                   allProjects={projects}
+                  authorName={penName}
+                  documents={filteredDocuments}
+                  editingDocumentId={editingDocumentId}
+                  editingTitle={editingTitle}
+                  fileViewMode={fileViewMode}
+                  getLocationLabel={getDocumentLocationLabel}
                   isDark={isDark}
-                  isSubfolderView={selectedProject !== null}
-                  createLabel={selectedProject ? 'New subfolder' : 'New project'}
+                  selectedLibraryDocumentId={selectedLibraryDocumentId}
                   selectedLibraryProjectId={selectedLibraryProjectId}
-                  onSelectLibraryProject={selectLibraryProject}
+                  selectedProject={selectedProject}
+                  selectedProjectId={selectedProjectId}
+                  visibleProjects={visibleProjects}
+                  onAddHubFile={(file) => {
+                    void handleAddHubFile(file);
+                  }}
+                  onAddHubFiles={handleAddHubFiles}
+                  onCancelRename={cancelDocumentRename}
+                  onCommitRename={commitDocumentRename}
                   onCreateProject={() => openCreateProjectPrompt(selectedProject?.id ?? null)}
-                  onOpenProjectFolder={(projectId) => openFolder(projectId)}
-                  onEditProject={setProjectInfoProject}
-                  onShareProject={(project) => {
-                    setShareProject(project);
-                    setProjectShareOpen(true);
+                  onCreateTemplate={(template) => {
+                    void handleCreateTemplate(template);
+                  }}
+                  onDelete={handleSoftDelete}
+                  onDeleteProject={handleDeleteProject}
+                  onDuplicate={(documentId) => {
+                    void handleDuplicateDocument(documentId);
                   }}
                   onDuplicateProject={(projectId) => {
                     void handleDuplicateProject(projectId);
                   }}
-                  onDeleteProject={handleDeleteProject}
-                />
-
-                <HubScriptsPanel
-                  documents={filteredDocuments}
-                  fileViewMode={fileViewMode}
-                  isInsideFolder={selectedProject !== null}
-                  isDark={isDark}
-                  editingDocumentId={editingDocumentId}
-                  editingTitle={editingTitle}
-                  selectedLibraryDocumentId={selectedLibraryDocumentId}
-                  onSelectLibraryDocument={selectLibraryDocument}
-                  getLocationLabel={getDocumentLocationLabel}
-                  onFileViewModeChange={setFileViewMode}
-                  onStartScratch={() => {
-                    void handleCreateScratch();
-                  }}
-                  onCreateTemplate={(template) => {
-                    void handleCreateTemplate(template);
-                  }}
+                  onEditProject={setProjectInfoProject}
+                  onEditingTitleChange={setEditingTitle}
+                  onFileViewModeChange={handleFileViewModeChange}
                   onImport={(file) => {
                     void handleUploadFile(file);
                   }}
-                  onOpenDocument={handleOpenDocumentFromHub}
-                  onStartRename={startDocumentRename}
-                  onCommitRename={commitDocumentRename}
-                  onCancelRename={cancelDocumentRename}
-                  onEditingTitleChange={setEditingTitle}
                   onMove={openMoveDialog}
-                  onDuplicate={(documentId) => {
-                    void handleDuplicateDocument(documentId);
+                  onOpenDocument={handleOpenDocumentFromHub}
+                  onOpenHubFile={handleOpenHubFile}
+                  onOpenProjectFolder={(projectId) => openFolder(projectId)}
+                  onPosterChange={(documentId, posterImageDataUrl) => {
+                    void updateDocumentPoster(documentId, posterImageDataUrl);
                   }}
+                  onSelectLibraryDocument={selectLibraryDocument}
+                  onSelectLibraryProject={selectLibraryProject}
                   onShare={(document) => {
                     openDocumentShare(document);
                   }}
-                  onDelete={handleSoftDelete}
+                  onShareProject={(project) => {
+                    setShareProject(project);
+                    setProjectShareOpen(true);
+                  }}
+                  onStartRename={startDocumentRename}
+                  onStartScratch={() => {
+                    void handleCreateScratch();
+                  }}
+                  onStartGuide={() => {
+                    void handleStartGuide();
+                  }}
                 />
               </>
             )}
@@ -403,6 +560,12 @@ export function MainHubDashboard({
               setSettingsOpen(true);
             }}
           />
+        ) : activeSection === 'codex' ? (
+          <HubCodexPanel
+            isDark={isDark}
+            projects={projects}
+            onOpenCapture={() => setCodexCaptureOpen(true)}
+          />
         ) : (
           <HubTrashPanel
             documents={filteredTrashDocuments}
@@ -414,23 +577,25 @@ export function MainHubDashboard({
             onDeleteProjectForever={handlePermanentDeleteProject}
           />
         )}
-      </HubShell>
+        </HubShell>
 
-      <ErrorBoundary label="ai-chat" fallback={null}>
-        <AiChatPanel
-          open={chatOpen}
-          variant="hub"
-          resolvedTheme={resolvedTheme}
-          libraryDocuments={documents}
-          selectedScriptId={selectedLibraryDocumentId}
-          onClose={() => setChatOpen(false)}
-          onOpenSettings={() => {
-            setChatOpen(false);
-            setSettingsInitialTab('ai');
-            setSettingsOpen(true);
-          }}
-        />
-      </ErrorBoundary>
+        <ErrorBoundary label="ai-chat" fallback={null}>
+          <AiChatPanel
+            open={chatOpen}
+            variant="hub"
+            resolvedTheme={resolvedTheme}
+            libraryDocuments={documents}
+            libraryProjects={projects}
+            selectedScriptId={selectedLibraryDocumentId}
+            onClose={() => setChatOpen(false)}
+            onOpenSettings={() => {
+              setChatOpen(false);
+              setSettingsInitialTab('ai');
+              setSettingsOpen(true);
+            }}
+          />
+        </ErrorBoundary>
+      </div>
 
       {settingsOpen ? (
         <div
@@ -455,6 +620,12 @@ export function MainHubDashboard({
           />
         </div>
       ) : null}
+
+      <HubFilePreviewDialog
+        document={previewHubFile}
+        isDark={isDark}
+        onClose={() => setPreviewHubFile(null)}
+      />
 
       <ShareDialog
         open={projectShareOpen && shareProject !== null}
@@ -536,6 +707,28 @@ export function MainHubDashboard({
         onSave={(updates) => {
           void handleSaveProjectInfo(updates);
         }}
+      />
+
+      <CommandPalette
+        items={commandPaletteItems}
+        open={commandPaletteOpen}
+        onOpenChange={setCommandPaletteOpen}
+      />
+
+      <ShortcutsModal
+        open={shortcutsOpen}
+        groups={hubShortcutGroups}
+        onClose={() => setShortcutsOpen(false)}
+      />
+
+      <CodexCaptureModal
+        open={codexCaptureOpen}
+        onOpenChange={setCodexCaptureOpen}
+        defaultScope="global"
+        defaultType="style"
+        projectOptions={projects
+          .filter((project) => !project.parentProjectId)
+          .map((project) => ({ id: project.id, title: project.title }))}
       />
     </>
   );

@@ -1,0 +1,92 @@
+---
+import LandingLayout from '../layouts/LandingLayout.astro';
+import Footer from '../components/landing/Footer.astro';
+import TopNav from '../components/landing/TopNav.astro';
+import EtymologyLine from '../components/EtymologyLine.astro';
+import { getSiteConfig } from '../lib/site-config';
+
+const config = getSiteConfig();
+const links = {
+	appUrl: config.appUrl,
+	repoUrl: config.repoUrl,
+	docsUrl: config.docsUrl,
+	contactEmail: config.contactEmail,
+};
+---
+
+<LandingLayout title="About Dastan" description="The name, the tradition, and why it fits a screenwriting tool.">
+	<TopNav links={links} current="about" />
+
+	<main class="about">
+		<section class="about__hero reveal">
+			<p class="slugline">EXT. THE NAME</p>
+			<h1>About Dastan</h1>
+			<EtymologyLine class="about__etymology" />
+		</section>
+
+		<section class="about__body reveal">
+			<p>
+				<strong>Dastan</strong> (<span dir="rtl" lang="fa" class="about__persian">داستان</span>) is the Persian
+				tradition of oral epic storytelling. Long-form tales were performed by professional narrators called
+				<em>dastangoi</em>, often through the night.
+			</p>
+			<p>
+				Stories told through the night. That's what dastan means. The name fits a writing tool built around
+				narrative craft, not decoration.
+			</p>
+			<p>
+				The screenplay page stays primary here: Courier, sluglines, revision colors. This page is provenance, not
+				theme dressing.
+			</p>
+			<p class="about__links">
+				<a href="/">Back to home</a>
+				<span aria-hidden="true">·</span>
+				<a href={links.docsUrl}>Documentation</a>
+				<span aria-hidden="true">·</span>
+				<a href={`${links.docsUrl}/why-dastan/`}>Why Dastan</a>
+			</p>
+		</section>
+	</main>
+
+	<Footer links={links} legalName={config.legalName} />
+</LandingLayout>
+
+<style>
+	.about {
+		max-width: 40rem;
+		margin: 0 auto;
+		padding: 3rem 1.25rem 2rem;
+	}
+
+	.about__hero h1 {
+		font-family: 'Courier Prime', Courier New, monospace;
+		font-size: clamp(1.8rem, 4vw, 2.4rem);
+		margin: 0.75rem 0 1rem;
+		color: var(--paper-bright);
+	}
+
+	.about__etymology {
+		font-size: 0.9rem;
+	}
+
+	.about__body p {
+		color: #d6d3d1;
+		margin: 0 0 1.1rem;
+	}
+
+	.about__persian {
+		font-family: 'Noto Naskh Arabic', 'Geeza Pro', serif;
+	}
+
+	.about__links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem 0.75rem;
+		font-size: 0.9rem;
+		margin-top: 2rem !important;
+	}
+
+	.about__links a {
+		color: #d6d3d1;
+	}
+</style>

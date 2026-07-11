@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import type { JSONContent } from '@tiptap/core';
-import type { ScreenplayDocumentRecord, ScreenplayWorkspaceData } from '../types';
+import type { ScreenplayDocumentRecord, ScreenplayProjectRecord, ScreenplayWorkspaceData } from '../types';
 import { useDastanApp } from '../context/DastanAppProvider';
 import type { CollaboratorPresence } from '@dastan/plugin-api';
 import { buildGeneralAiContext } from '../utils/ai-context-general';
@@ -18,6 +18,7 @@ import {
 	type AiMemory,
 	type AiChatThread,
 } from '../utils/ai-memory-storage';
+import { listCodexItems, type CodexItem } from '../utils/codex-storage';
 import { extractMemorySuggestions } from '../utils/ai-memory-extract';
 import { toCollaborationChatMessage } from '../utils/collaboration-chat';
 import { useCollaborationChatSync } from './useCollaborationChatSync';
@@ -36,6 +37,18 @@ import type { AiInteractionMode } from '../utils/ai-interaction-mode';
 import { interactionModeEnablesTools } from '../utils/ai-interaction-mode';
 import { extractToolInvocations } from '../utils/ai-tool-executor';
 import { GENERAL_CHAT_DOCUMENT_ID } from '../utils/user-settings';
+import {
+	loadDocumentAiPrefs,
+	resolveScriptContextSections,
+	saveDocumentAiPrefs,
+} from '../utils/ai-document-prefs';
+import {
+	defaultScriptContextSections,
+	type ScriptContextSections,
+} from '../utils/ai-script-context-options';
+import { buildContextManifest, toStoredContextManifest } from '../utils/context-manifest';
+import { selectRelevantApprovedMemories } from '../utils/ai-memory-relevance';
+import { getActiveDocuments, getAllProjects } from '../utils/screenplay-storage';
 
 export type AiChatContextMode = 'general' | 'script';
 
@@ -52,15 +65,28 @@ function getTextFromUiMessage(message: UIMessage): string {
 		.join('');
 }
 
+type UiMessageWithMeta = UIMessage & {
+	contextManifest?: AiChatMessage['contextManifest'];
+	modelId?: string;
+	modelSelection?: string;
+};
+
 function uiMessagesToStored(messages: UIMessage[]): AiChatMessage[] {
 	return messages
 		.filter((message) => message.role === 'user' || message.role === 'assistant')
-		.map((message) => ({
-			id: message.id,
-			role: message.role,
-			content: getTextFromUiMessage(message),
-			createdAt: new Date().toISOString(),
-		}));
+		.map((message) => {
+			const meta = message as UiMessageWithMeta;
+
+			return {
+				id: message.id,
+				role: message.role,
+				content: getTextFromUiMessage(message),
+				createdAt: new Date().toISOString(),
+				...(meta.modelId ? { modelId: meta.modelId } : {}),
+				...(meta.modelSelection ? { modelSelection: meta.modelSelection } : {}),
+				...(meta.contextManifest ? { contextManifest: meta.contextManifest } : {}),
+			};
+		});
 }
 
 function storedMessagesToUi(messages: AiChatMessage[]): UIMessage[] {
@@ -68,7 +94,87 @@ function storedMessagesToUi(messages: AiChatMessage[]): UIMessage[] {
 		id: message.id,
 		role: message.role,
 		parts: [{ type: 'text', text: message.content }],
+		...(message.modelId ? { modelId: message.modelId } : {}),
+		...(message.modelSelection ? { modelSelection: message.modelSelection } : {}),
+		...(message.contextManifest ? { contextManifest: message.contextManifest } : {}),
 	}));
+}
+
+interface SystemPromptSnapshot {
+	contextMode: AiChatContextMode;
+	interactionMode: AiInteractionMode;
+	libraryDocuments: ScreenplayDocumentRecord[];
+	libraryProjects: ScreenplayProjectRecord[];
+	globalRules: string;
+	memories: AiMemory[];
+	codexItems: CodexItem[];
+	projectId?: string;
+	relevanceQuery: string;
+	documentId: string;
+	documentTitle: string;
+	documentContent: JSONContent | null;
+	workspace: ScreenplayWorkspaceData;
+	documentRules: string;
+	includeScriptContext: boolean;
+	includeWorkspaceContext: boolean;
+	scriptContextSections: ScriptContextSections;
+	selectionText: string | null;
+	activeBlockIndex: number | null;
+	activeWorkspaceTab: string | null;
+	activeCollaborators: CollaboratorPresence[];
+}
+
+function buildSystemPromptFromSnapshot(snapshot: SystemPromptSnapshot): string {
+	if (snapshot.contextMode === 'general') {
+		return buildGeneralAiContext({
+			documents: snapshot.libraryDocuments,
+			projects: snapshot.libraryProjects,
+			globalRules: snapshot.globalRules,
+			memories: snapshot.memories,
+			codexItems: snapshot.codexItems,
+			projectId: snapshot.projectId,
+			interactionMode: snapshot.interactionMode,
+			relevanceQuery: snapshot.relevanceQuery,
+		}).systemPrompt;
+	}
+
+	return buildAiContext({
+		documentId: snapshot.documentId,
+		documentTitle: snapshot.documentTitle,
+		documentContent: snapshot.documentContent,
+		workspace: snapshot.workspace,
+		globalRules: snapshot.globalRules,
+		documentRules: snapshot.documentRules,
+		memories: snapshot.memories,
+		codexItems: snapshot.codexItems,
+		projectId: snapshot.projectId,
+		includeScriptContext: snapshot.includeScriptContext,
+		includeWorkspaceContext: snapshot.includeWorkspaceContext,
+		scriptContextSections: snapshot.scriptContextSections,
+		selectionText: snapshot.selectionText,
+		activeBlockIndex: snapshot.activeBlockIndex,
+		relevanceQuery: snapshot.relevanceQuery,
+		interactionMode: snapshot.interactionMode,
+		activeWorkspaceTab: snapshot.activeWorkspaceTab,
+		activeCollaborators: snapshot.activeCollaborators,
+	}).systemPrompt;
+}
+
+async function resolveSystemPromptForRequest(snapshot: SystemPromptSnapshot): Promise<string> {
+	if (snapshot.contextMode === 'general') {
+		try {
+			const [documents, projects] = await Promise.all([getActiveDocuments(), getAllProjects()]);
+			return buildSystemPromptFromSnapshot({
+				...snapshot,
+				libraryDocuments: documents,
+				libraryProjects: projects,
+			});
+		} catch {
+			// Fall back to the latest in-memory snapshot if storage is temporarily unavailable.
+		}
+	}
+
+	return buildSystemPromptFromSnapshot(snapshot);
 }
 
 interface UseAiChatOptions {
@@ -82,6 +188,7 @@ interface UseAiChatOptions {
 	documentContent: JSONContent | null;
 	workspace: ScreenplayWorkspaceData;
 	libraryDocuments?: ScreenplayDocumentRecord[];
+	libraryProjects?: ScreenplayProjectRecord[];
 	threadId: string | null;
 	roomId?: string | null;
 	activeCollaborators?: CollaboratorPresence[];
@@ -89,7 +196,7 @@ interface UseAiChatOptions {
 	selectionText?: string | null;
 	activeBlockIndex?: number | null;
 	activeWorkspaceTab?: string | null;
-	onToolInvocations?: (invocations: Array<{ toolName: string; input: unknown }>) => void;
+	onToolInvocations?: (invocations: Array<{ toolName: string; input: unknown }>, messageId: string) => void;
 	onThreadChange: (thread: AiChatThread) => void;
 	onThreadCreated: (thread: AiChatThread) => void;
 }
@@ -105,6 +212,7 @@ export function useAiChat({
 	documentContent,
 	workspace,
 	libraryDocuments = [],
+	libraryProjects = [],
 	threadId,
 	roomId = null,
 	activeCollaborators = [],
@@ -122,12 +230,25 @@ export function useAiChat({
 	const settingsRef = useRef(loadAiSettings());
 	const [settings, setSettings] = useState<AiSettings>(() => loadAiSettings());
 	const [memories, setMemories] = useState<Awaited<ReturnType<typeof listAiMemories>>>([]);
+	const [codexItems, setCodexItems] = useState<CodexItem[]>([]);
 	const [activeThread, setActiveThread] = useState<AiChatThread | null>(null);
-	const [includeScriptContext, setIncludeScriptContextState] = useState(settings.includeScriptContext);
-	const [includeWorkspaceContext, setIncludeWorkspaceContextState] = useState(settings.includeWorkspaceContext);
+	const [includeScriptContext, setIncludeScriptContextState] = useState(() => {
+		const docPrefs = loadDocumentAiPrefs(threadDocumentId);
+		return docPrefs.includeScriptContext ?? settings.includeScriptContext;
+	});
+	const [includeWorkspaceContext, setIncludeWorkspaceContextState] = useState(() => {
+		const docPrefs = loadDocumentAiPrefs(threadDocumentId);
+		return docPrefs.includeWorkspaceContext ?? settings.includeWorkspaceContext;
+	});
+	const [scriptContextSections, setScriptContextSectionsState] = useState<ScriptContextSections>(() =>
+		resolveScriptContextSections(threadDocumentId),
+	);
+	const lastContextManifestRef = useRef<ReturnType<typeof toStoredContextManifest> | null>(null);
+	const lastResolvedModelRef = useRef<{ modelId: string; modelSelection: string } | null>(null);
 	const [selectedModel, setSelectedModel] = useState(AUTO_MODEL_ID);
 	const [submitError, setSubmitError] = useState<string | null>(null);
 	const [memorySuggestions, setMemorySuggestions] = useState<MemorySuggestion[]>([]);
+	const [relevanceQuery, setRelevanceQuery] = useState('');
 	const activeThreadRef = useRef<AiChatThread | null>(null);
 	const messagesRef = useRef<UIMessage[]>([]);
 	const statusRef = useRef<'submitted' | 'streaming' | 'ready' | 'error'>('ready');
@@ -136,8 +257,32 @@ export function useAiChat({
 	const contextModeRef = useRef(contextMode);
 	const memoryDocumentId = contextMode === 'general' ? GENERAL_CHAT_DOCUMENT_ID : threadDocumentId;
 	const collaborationRoomId = collaboration.isAvailable() ? (roomId ?? threadDocumentId) : null;
-
 	const activeSelectionText = selectionText?.trim() || null;
+
+	useEffect(() => {
+		const docPrefs = loadDocumentAiPrefs(threadDocumentId);
+		setIncludeScriptContextState(docPrefs.includeScriptContext ?? settings.includeScriptContext);
+		setIncludeWorkspaceContextState(docPrefs.includeWorkspaceContext ?? settings.includeWorkspaceContext);
+		setScriptContextSectionsState(resolveScriptContextSections(threadDocumentId));
+	}, [threadDocumentId, settings.includeScriptContext, settings.includeWorkspaceContext]);
+
+	const documentRules = workspace.aiWriterRules?.trim() ?? '';
+	const suggestedMemoriesCount = useMemo(
+		() => memories.filter((memory) => (memory.status ?? 'approved') === 'suggested').length,
+		[memories],
+	);
+	const includedMemoriesCount = useMemo(() => {
+		const pinnedCount = memories.filter(
+			(memory) => memory.pinned && (memory.status ?? 'approved') !== 'suggested',
+		).length;
+		const relevantCount = selectRelevantApprovedMemories(memories, {
+			documentId: contextMode === 'general' ? undefined : documentId,
+			projectId,
+			relevanceQuery,
+		}).length;
+
+		return pinnedCount + relevantCount;
+	}, [contextMode, documentId, memories, projectId, relevanceQuery]);
 	const selectionActive = Boolean(activeSelectionText);
 
 	useEffect(() => {
@@ -148,25 +293,48 @@ export function useAiChat({
 		void listAiMemories(memoryDocumentId, projectId).then(setMemories);
 	}, [memoryDocumentId, projectId]);
 
-	const applyMemorySuggestions = useCallback((assistantText: string) => {
-		const currentSettings = loadAiSettings();
+	const reloadCodex = useCallback(() => {
+		void listCodexItems({
+			documentId: contextMode === 'general' ? undefined : documentId,
+			projectId,
+			includeAll: contextMode === 'general',
+		}).then(setCodexItems);
+	}, [contextMode, documentId, projectId]);
 
-		if (!currentSettings.autoSuggestMemories) {
+	const applyMemorySuggestions = useCallback(
+		(assistantText: string) => {
+			const currentSettings = loadAiSettings();
+
+			if (!currentSettings.autoSuggestMemories) {
+				setMemorySuggestions([]);
+				return;
+			}
+
+			const defaultScope: AiMemory['scope'] = contextModeRef.current === 'general' ? 'global' : 'document';
+			const suggestions = extractMemorySuggestions(assistantText).filter(
+				(text) => !dismissedMemoryTextsRef.current.has(text.toLowerCase()),
+			);
+
+			void (async () => {
+				for (const text of suggestions) {
+					await createAiMemory({
+						scope: defaultScope,
+						documentId: defaultScope === 'document' ? memoryDocumentId : undefined,
+						content: text,
+						pinned: false,
+						status: 'suggested',
+					});
+				}
+
+				if (suggestions.length > 0) {
+					reloadMemories();
+				}
+			})();
+
 			setMemorySuggestions([]);
-			return;
-		}
-
-		const defaultScope: AiMemory['scope'] = contextModeRef.current === 'general' ? 'global' : 'document';
-		const suggestions = extractMemorySuggestions(assistantText)
-			.filter((text) => !dismissedMemoryTextsRef.current.has(text.toLowerCase()))
-			.map((text) => ({
-				id: globalThis.crypto.randomUUID(),
-				text,
-				suggestedScope: defaultScope,
-			}));
-
-		setMemorySuggestions(suggestions);
-	}, []);
+		},
+		[memoryDocumentId, projectId, reloadMemories],
+	);
 
 	const dismissMemorySuggestion = useCallback((id: string) => {
 		setMemorySuggestions((current) => {
@@ -202,19 +370,38 @@ export function useAiChat({
 		[memoryDocumentId, memorySuggestions, projectId, reloadMemories],
 	);
 
-	const setIncludeScriptContext = useCallback((value: boolean) => {
-		setIncludeScriptContextState(value);
-		const nextSettings = { ...loadAiSettings(), includeScriptContext: value };
-		saveAiSettings(nextSettings);
-		setSettings(nextSettings);
-	}, []);
+	const setIncludeScriptContext = useCallback(
+		(value: boolean) => {
+			setIncludeScriptContextState(value);
+			saveDocumentAiPrefs(threadDocumentId, { includeScriptContext: value });
+			const nextSettings = { ...loadAiSettings(), includeScriptContext: value };
+			saveAiSettings(nextSettings);
+			setSettings(nextSettings);
+		},
+		[threadDocumentId],
+	);
 
-	const setIncludeWorkspaceContext = useCallback((value: boolean) => {
-		setIncludeWorkspaceContextState(value);
-		const nextSettings = { ...loadAiSettings(), includeWorkspaceContext: value };
-		saveAiSettings(nextSettings);
-		setSettings(nextSettings);
-	}, []);
+	const setIncludeWorkspaceContext = useCallback(
+		(value: boolean) => {
+			setIncludeWorkspaceContextState(value);
+			saveDocumentAiPrefs(threadDocumentId, { includeWorkspaceContext: value });
+			const nextSettings = { ...loadAiSettings(), includeWorkspaceContext: value };
+			saveAiSettings(nextSettings);
+			setSettings(nextSettings);
+		},
+		[threadDocumentId],
+	);
+
+	const setScriptContextSections = useCallback(
+		(patch: Partial<ScriptContextSections>) => {
+			setScriptContextSectionsState((current) => {
+				const next = { ...current, ...patch };
+				saveDocumentAiPrefs(threadDocumentId, { scriptContextSections: next });
+				return next;
+			});
+		},
+		[threadDocumentId],
+	);
 
 	const effectiveModel = useMemo(
 		() => resolveEffectiveModel(selectedModel, settings),
@@ -226,51 +413,54 @@ export function useAiChat({
 		[aiProviders, selectedProvider],
 	);
 
-	const systemPrompt = useMemo(() => {
-		if (contextMode === 'general') {
-			return buildGeneralAiContext({
-				documents: libraryDocuments,
-				globalRules: settings.globalRules,
-				memories,
-				projectId,
-				interactionMode,
-			}).systemPrompt;
-		}
-
-		return buildAiContext({
-			documentId,
-			documentTitle,
-			documentContent,
-			workspace,
-			globalRules: settings.globalRules,
-			memories,
-			projectId,
-			includeScriptContext,
-			includeWorkspaceContext,
-			selectionText: activeSelectionText,
-			activeBlockIndex,
-			interactionMode,
-			activeWorkspaceTab,
-			activeCollaborators,
-		}).systemPrompt;
-	}, [
+	const pendingRelevanceQueryRef = useRef('');
+	const systemPromptSnapshotRef = useRef<SystemPromptSnapshot>({
 		contextMode,
 		interactionMode,
+		libraryDocuments,
+		libraryProjects,
+		globalRules: settings.globalRules,
+		memories,
+		codexItems,
+		projectId,
+		relevanceQuery: '',
 		documentId,
 		documentTitle,
 		documentContent,
 		workspace,
-		settings.globalRules,
-		memories,
-		projectId,
+		documentRules,
 		includeScriptContext,
 		includeWorkspaceContext,
-		activeSelectionText,
+		scriptContextSections,
+		selectionText: activeSelectionText,
 		activeBlockIndex,
 		activeWorkspaceTab,
 		activeCollaborators,
+	});
+
+	systemPromptSnapshotRef.current = {
+		contextMode,
+		interactionMode,
 		libraryDocuments,
-	]);
+		libraryProjects,
+		globalRules: settings.globalRules,
+		memories,
+		codexItems,
+		projectId,
+		relevanceQuery: pendingRelevanceQueryRef.current || relevanceQuery,
+		documentId,
+		documentTitle,
+		documentContent,
+		workspace,
+		documentRules,
+		includeScriptContext,
+		includeWorkspaceContext,
+		scriptContextSections,
+		selectionText: activeSelectionText,
+		activeBlockIndex,
+		activeWorkspaceTab,
+		activeCollaborators,
+	};
 
 	const editorToolsEnabled =
 		interactionModeEnablesTools(interactionMode) &&
@@ -295,6 +485,16 @@ export function useAiChat({
 	}, [memoryDocumentId, projectId]);
 
 	useEffect(() => {
+		reloadCodex();
+	}, [reloadCodex]);
+
+	useEffect(() => {
+		const onCodexChanged = () => reloadCodex();
+		window.addEventListener('dastan:codex-changed', onCodexChanged);
+		return () => window.removeEventListener('dastan:codex-changed', onCodexChanged);
+	}, [reloadCodex]);
+
+	useEffect(() => {
 		activeThreadRef.current = activeThread;
 	}, [activeThread]);
 
@@ -311,10 +511,15 @@ export function useAiChat({
 					const modelForRequest = modelOverrideRef.current ?? selectedModel;
 					modelOverrideRef.current = null;
 					const resolved = resolveEffectiveModel(modelForRequest, currentSettings);
+					lastResolvedModelRef.current = {
+						modelId: resolved.modelId,
+						modelSelection: modelForRequest,
+					};
 					const apiKey = aiProvidersRef.current.get(resolved.provider)?.resolveApiKey(currentSettings);
 					const accessToken = auth.getAccessToken ? await auth.getAccessToken() : null;
 					const { systemAppendix, messages: compressedMessages } = compressConversationHistory(requestMessages);
-					const requestSystem = systemAppendix ? `${systemPrompt}\n\n${systemAppendix}` : systemPrompt;
+					const requestSystemBase = await resolveSystemPromptForRequest(systemPromptSnapshotRef.current);
+					const requestSystem = systemAppendix ? `${requestSystemBase}\n\n${systemAppendix}` : requestSystemBase;
 
 					return {
 						body: {
@@ -336,7 +541,7 @@ export function useAiChat({
 					};
 				},
 			}),
-		[providerAdapter, settings, selectedModel, systemPrompt, interactionMode, editorToolsEnabled, auth],
+		[providerAdapter, settings, selectedModel, interactionMode, editorToolsEnabled, auth],
 	);
 
 	const persistThread = useCallback(
@@ -386,9 +591,40 @@ export function useAiChat({
 		transport,
 		onFinish: ({ messages: finishedMessages }) => {
 			void (async () => {
-				await persistThread(finishedMessages);
+				const manifest = lastContextManifestRef.current;
+				const resolvedModel = lastResolvedModelRef.current;
+				let messagesToPersist = finishedMessages;
 
-				const lastAssistant = [...finishedMessages].reverse().find((message) => message.role === 'assistant');
+				const lastAssistantIndex = [...finishedMessages]
+					.map((message, index) => ({ message, index }))
+					.reverse()
+					.find((entry) => entry.message.role === 'assistant')?.index;
+
+				if (lastAssistantIndex !== undefined && (manifest || resolvedModel)) {
+					messagesToPersist = finishedMessages.map((message, index) => {
+						if (index !== lastAssistantIndex) {
+							return message;
+						}
+
+						return {
+							...message,
+							...(manifest ? { contextManifest: manifest } : {}),
+							...(resolvedModel
+								? {
+										modelId: resolvedModel.modelId,
+										modelSelection: resolvedModel.modelSelection,
+									}
+								: {}),
+						} as UIMessage;
+					});
+					setMessages(messagesToPersist);
+					lastContextManifestRef.current = null;
+					lastResolvedModelRef.current = null;
+				}
+
+				await persistThread(messagesToPersist);
+
+				const lastAssistant = [...messagesToPersist].reverse().find((message) => message.role === 'assistant');
 
 				if (!lastAssistant) {
 					setMemorySuggestions([]);
@@ -399,7 +635,7 @@ export function useAiChat({
 					const invocations = extractToolInvocations(lastAssistant);
 
 					if (invocations.length > 0) {
-						onToolInvocations(invocations);
+						onToolInvocations(invocations, lastAssistant.id);
 					}
 				}
 
@@ -559,6 +795,27 @@ export function useAiChat({
 
 			setSubmitError(null);
 			setMemorySuggestions([]);
+			pendingRelevanceQueryRef.current = trimmed;
+			setRelevanceQuery(trimmed);
+
+			lastContextManifestRef.current = toStoredContextManifest(
+				buildContextManifest({
+					documentContent: contextMode === 'general' ? null : documentContent,
+					workspace,
+					globalRules: settings.globalRules,
+					documentRules,
+					memories,
+					codexItems,
+					documentId: contextMode === 'general' ? undefined : documentId,
+					projectId,
+					includeScriptContext: contextMode !== 'general' && includeScriptContext,
+					includeWorkspaceContext: contextMode !== 'general' && includeWorkspaceContext,
+					scriptContextSections,
+					selectionText: activeSelectionText,
+					activeBlockIndex,
+					relevanceQuery: trimmed,
+				}),
+			);
 
 			try {
 				await sendMessage({ text: trimmed });
@@ -569,7 +826,27 @@ export function useAiChat({
 				return false;
 			}
 		},
-		[canSend, modelConfigurationError, persistThread, sendMessage, startNewThread, status],
+		[
+			activeBlockIndex,
+			activeSelectionText,
+			canSend,
+			contextMode,
+			documentContent,
+			documentId,
+			documentRules,
+			includeScriptContext,
+			includeWorkspaceContext,
+			memories,
+			codexItems,
+			modelConfigurationError,
+			projectId,
+			scriptContextSections,
+			sendMessage,
+			settings.globalRules,
+			startNewThread,
+			status,
+			workspace,
+		],
 	);
 
 	const editMessage = useCallback(
@@ -606,11 +883,20 @@ export function useAiChat({
 		[regenerate],
 	);
 
+	const setSelectedModelForDocument = useCallback(
+		(modelId: string) => {
+			setSelectedModel(modelId);
+			saveDocumentAiPrefs(threadDocumentId, { selectedModel: modelId });
+		},
+		[threadDocumentId],
+	);
+
 	return {
 		messages,
 		status,
 		error: submitError ?? error?.message ?? null,
 		memories,
+		codexItems,
 		settings,
 		interactionMode,
 		selectedModel,
@@ -618,6 +904,8 @@ export function useAiChat({
 		includeScriptContext,
 		effectiveIncludeScriptContext,
 		includeWorkspaceContext,
+		scriptContextSections,
+		documentRules,
 		selectionActive,
 		activeSelectionText,
 		isLongConversation,
@@ -629,11 +917,14 @@ export function useAiChat({
 		isModelConfigured: isModelConfigured(settings, selectedModel),
 		usingCredits,
 		creditsRemaining,
+		suggestedMemoriesCount,
+		includedMemoriesCount,
 		availableModels: getAvailableModels(settings),
 		allModels: AI_MODEL_REGISTRY,
-		setSelectedModel,
+		setSelectedModel: setSelectedModelForDocument,
 		setIncludeScriptContext,
 		setIncludeWorkspaceContext,
+		setScriptContextSections,
 		refreshSettings,
 		startNewThread,
 		selectThread,

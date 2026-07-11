@@ -109,6 +109,14 @@ export function executeAiTool(
 			context.updateWorkspace({ globalNotes: update.notes });
 			return { success: true, message: 'Updated global notes.' };
 		}
+		case 'planner_insert': {
+			const text =
+				typeof input === 'object' && input && 'text' in input
+					? String((input as { text: string }).text)
+					: String(input ?? '');
+			context.insertAtCursor(text);
+			return { success: true, message: 'Inserted planner draft.' };
+		}
 		default:
 			return { success: false, message: `Unknown tool: ${toolName}` };
 	}

@@ -79,7 +79,20 @@ export function resolveLayoutBackgroundColor(
 		return isDark ? '#0f172a' : '#ffffff';
 	}
 
-	return highlightMap[setting] ?? (isDark ? '#1e293b' : '#ffffff');
+	if (isDark) {
+		const darkHighlightMap: Record<Exclude<ScreenplayColorSetting, 'automatic' | 'black'>, string> = {
+			blue: '#1e3a5f',
+			red: '#4c1d1d',
+			green: '#14532d',
+			purple: '#3b0764',
+			orange: '#7c2d12',
+			gray: '#1e293b',
+		};
+
+		return darkHighlightMap[setting] ?? '#1e293b';
+	}
+
+	return highlightMap[setting] ?? '#ffffff';
 }
 
 export function resolveElementColor(setting: ScreenplayColorSetting, isDark: boolean): string | null {

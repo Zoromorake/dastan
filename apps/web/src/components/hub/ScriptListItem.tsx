@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 import type { ScreenplayDocumentRecord } from '../../types';
 import { formatRelativeDate } from '../../utils/hub-utils';
-import { formatRuntimeEstimate } from '../../utils/runtime-estimate';
+import { formatPageCount, formatRuntimeEstimate } from '../../utils/runtime-estimate';
 import { countPagesFromContent } from '../../utils/screenplay-pagination';
 import { getHubTheme } from '../../utils/hub-theme';
 import { cn } from '@/lib/utils';
@@ -9,10 +9,10 @@ import { ScriptActionsMenu, useScriptContextMenu } from './ScriptActionsMenu';
 import type { HubItemActionsMenuHandle } from './HubItemActionsMenu';
 
 export const SCRIPT_LIST_GRID =
-  'grid grid-cols-[minmax(0,1fr)_3.5rem_7rem_2rem] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_4rem_8rem_2rem]';
+  'grid grid-cols-[minmax(0,1fr)_5.5rem_7rem_2rem] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_6.5rem_8rem_2rem]';
 
 export const SCRIPT_LIST_GRID_WITH_LOCATION =
-  'grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_3.5rem_7rem_2rem] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_4rem_8rem_2rem]';
+  'grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem_7rem_2rem] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_6.5rem_8rem_2rem]';
 
 interface ScriptListItemProps {
   document: ScreenplayDocumentRecord;
@@ -34,10 +34,6 @@ interface ScriptListItemProps {
   onDelete: () => void;
 }
 
-function formatPageCountAbbrev(count: number): string {
-  return `${count}p · ${formatRuntimeEstimate(count)}`;
-}
-
 export function ScriptListItem({
   document,
   locationLabel,
@@ -46,7 +42,7 @@ export function ScriptListItem({
   isSelected,
   isEditing,
   editingTitle,
-  onSelect,
+  onSelect: _onSelect,
   onOpen,
   onStartRename,
   onCommitRename,
@@ -70,15 +66,21 @@ export function ScriptListItem({
 
   return (
     <article
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${title}`}
+      aria-current={isSelected ? 'true' : undefined}
       className={cn(
-        `group ${gridClass} cursor-pointer px-3 py-2.5 transition`,
+        `group ${gridClass} cursor-pointer px-3 py-2.5 transition outline-none focus-visible:ring-2 focus-visible:ring-ring/50`,
         isSelected ? 'bg-primary/5' : 'hover:bg-muted/40',
       )}
-      onClick={onSelect}
+      onClick={onOpen}
       onContextMenu={handleContextMenu}
-      onDoubleClick={(event) => {
-        event.preventDefault();
-        onOpen();
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen();
+        }
       }}
     >
       <div className="flex min-w-0 items-center gap-2">
@@ -107,6 +109,12 @@ export function ScriptListItem({
         ) : (
           <>
             <span className={`min-w-0 truncate text-sm font-medium ${hub.panelTitle}`}>{title}</span>
+            {document.workspace?.guide?.active ||
+            (document.workspace?.guide?.furthestStep && document.workspace.guide.furthestStep !== 'finish') ? (
+              <span className="shrink-0 rounded-full bg-gold/10 px-1.5 text-[10px] font-medium tracking-wide text-gold uppercase">
+                Guide
+              </span>
+            ) : null}
             {genre ? (
               <span className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
                 {genre}
@@ -122,7 +130,12 @@ export function ScriptListItem({
         </span>
       ) : null}
 
-      <span className={`text-xs tabular-nums ${hub.panelMuted}`}>{formatPageCountAbbrev(pageCount)}</span>
+      <span
+        className={`text-xs tabular-nums ${hub.panelMuted}`}
+        title={formatRuntimeEstimate(pageCount)}
+      >
+        {formatPageCount(pageCount)} · {formatRuntimeEstimate(pageCount)}
+      </span>
 
       <span className={`text-xs tabular-nums ${hub.panelMuted}`}>{formatRelativeDate(document.updatedAt)}</span>
 

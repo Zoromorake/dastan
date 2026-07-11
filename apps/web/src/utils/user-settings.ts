@@ -16,6 +16,8 @@ export interface UserSettingsState {
 	showFormatPalette: boolean;
 	trackWritingStats: boolean;
 	typewriterMode: boolean;
+	hubFileViewMode: 'grid' | 'list';
+	aiTodayPanel: boolean;
 }
 
 export const userSettingsStorageKey = 'dastan.user-settings.v1';
@@ -32,6 +34,8 @@ const defaultUserSettings: UserSettingsState = {
 	showFormatPalette: true,
 	trackWritingStats: true,
 	typewriterMode: false,
+	hubFileViewMode: 'grid',
+	aiTodayPanel: false,
 };
 
 function migrateDefaultTemplate(value: unknown): ScriptTemplate {
@@ -76,6 +80,7 @@ export function loadUserSettings(): UserSettingsState {
 			...defaultUserSettings,
 			...rest,
 			defaultTemplate: migrateDefaultTemplate(parsed.defaultTemplate),
+			hubFileViewMode: parsed.hubFileViewMode === 'list' ? 'list' : 'grid',
 		};
 	} catch {
 		return defaultUserSettings;
@@ -114,6 +119,24 @@ export function setTypewriterMode(enabled: boolean): void {
 	if (typeof window !== 'undefined') {
 		window.dispatchEvent(new CustomEvent('dastan:typewriter-mode-changed', { detail: enabled }));
 	}
+}
+
+export function loadHubFileViewMode(): 'grid' | 'list' {
+	return loadUserSettings().hubFileViewMode;
+}
+
+export function setHubFileViewMode(mode: 'grid' | 'list'): void {
+	const settings = loadUserSettings();
+	saveUserSettings({ ...settings, hubFileViewMode: mode });
+}
+
+export function loadAiTodayPanel(): boolean {
+	return loadUserSettings().aiTodayPanel;
+}
+
+export function setAiTodayPanel(enabled: boolean): void {
+	const settings = loadUserSettings();
+	saveUserSettings({ ...settings, aiTodayPanel: enabled });
 }
 
 export const SCRIPT_TEMPLATE_LABELS: Record<ScriptTemplate, string> = {

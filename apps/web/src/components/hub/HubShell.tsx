@@ -26,6 +26,7 @@ interface HubShellProps {
 
 const navItems: Array<{ key: HubSection; label: string }> = [
   { key: 'library', label: 'Library' },
+  { key: 'codex', label: 'Codex' },
   { key: 'shared', label: 'Shared' },
   { key: 'trash', label: 'Trash' },
 ];
@@ -38,7 +39,7 @@ function GraffitiNavLabel({ label, isActive, isDark }: { label: string; isActive
           <span
             aria-hidden
             className={`pointer-events-none absolute -inset-x-1.5 inset-y-0.5 -rotate-2 rounded-[2px] ${
-              isDark ? 'bg-amber-400/40' : 'bg-amber-500/50'
+              isDark ? 'bg-gold/25' : 'bg-gold/35'
             }`}
             style={{
               clipPath: 'polygon(2% 18%, 96% 8%, 98% 82%, 4% 92%)',
@@ -96,7 +97,7 @@ function HubSidebar({
                 {showBadge ? (
                   <span
                     className={`ml-2 shrink-0 rounded-sm px-1 py-0.5 text-[8px] font-bold tracking-wider uppercase ${
-                      isDark ? 'bg-amber-400 text-slate-900' : 'bg-neutral-950 text-amber-300'
+                      isDark ? 'bg-gold/20 text-gold' : 'bg-neutral-950 text-amber-300'
                     }`}
                   >
                     {trashedCount}
@@ -147,8 +148,8 @@ export function HubShell({
 
   const sidebarClass = hub.sidebar;
   const dashClass = isDark ? 'border-slate-600/60' : 'border-neutral-950/20';
-  const mutedTextClass = isDark ? 'text-amber-400/55' : 'text-neutral-950/55';
-  const logoClass = isDark ? 'text-amber-400' : 'text-neutral-950';
+  const mutedTextClass = isDark ? 'text-muted-foreground' : 'text-neutral-950/55';
+  const logoClass = isDark ? 'text-foreground' : 'text-neutral-950';
 
   const handleSectionChange = (section: HubSection) => {
     onSectionChange(section);
@@ -189,7 +190,7 @@ export function HubShell({
   };
 
   return (
-    <div className={`flex h-screen overflow-hidden bg-background text-foreground ${isDark ? 'dark' : ''}`}>
+    <div className={`flex h-full min-h-0 min-w-0 flex-1 overflow-hidden bg-background text-foreground ${isDark ? 'dark' : ''}`}>
       <aside className={`hidden w-[12.5rem] shrink-0 flex-col px-4 py-5 md:flex ${sidebarClass}`}>
         <HubSidebar {...sidebarProps} />
       </aside>
@@ -238,11 +239,20 @@ export function HubShell({
                   <HubBreadcrumbs items={breadcrumbs} />
                 ) : (
                   <h1 className="truncate text-xl font-semibold tracking-tight">
-                    {activeSection === 'library' ? 'Library' : activeSection === 'shared' ? 'Shared' : 'Trash'}
+                    {activeSection === 'library'
+                      ? 'Library'
+                      : activeSection === 'codex'
+                        ? 'Codex'
+                        : activeSection === 'shared'
+                          ? 'Shared'
+                          : 'Trash'}
                   </h1>
                 )}
                 {activeSection === 'library' && breadcrumbs.length === 0 ? (
                   <p className="mt-0.5 text-sm text-muted-foreground">All your scripts and project folders.</p>
+                ) : null}
+                {activeSection === 'codex' ? (
+                  <p className="mt-0.5 text-sm text-muted-foreground">Style instincts and craft reference notes.</p>
                 ) : null}
               </div>
               {activeSection === 'library' ? (

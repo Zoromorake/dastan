@@ -19,6 +19,7 @@ import { ShareDialog } from './ShareDialog';
 import { ShortcutsModal } from './ShortcutsModal';
 import { UserSettingsPanel } from './UserSettingsPanel';
 import type { SettingsTab, UserThemeSetting } from './UserSettingsPanel';
+import type { AiSettingsSection } from '../utils/ai-settings-sections';
 import type { CollaboratorPresence } from '@dastan/plugin-api';
 import { CollaboratorAvatars } from './CollaboratorAvatars';
 import { LocalAccountBadge } from './settings/LocalAccountBadge';
@@ -40,6 +41,7 @@ interface TopBarProps {
 	workspaceMode: WorkspaceMode;
 	onWorkspaceModeChange: (mode: WorkspaceMode) => void;
 	settingsTabRequest?: SettingsTab | null;
+	aiSettingsSectionRequest?: AiSettingsSection | null;
 	onSettingsTabRequestHandled?: () => void;
 	onOpenFindReplace?: () => void;
 	typewriterMode?: boolean;
@@ -48,6 +50,7 @@ interface TopBarProps {
 	sprintChip?: ReactNode;
 	collaborators?: CollaboratorPresence[];
 	collaborationActive?: boolean;
+	isEphemeralDraft?: boolean;
 }
 
 export function TopBar({
@@ -68,6 +71,7 @@ export function TopBar({
 	workspaceMode,
 	onWorkspaceModeChange,
 	settingsTabRequest,
+	aiSettingsSectionRequest,
 	onSettingsTabRequestHandled,
 	onOpenFindReplace,
 	typewriterMode = false,
@@ -76,11 +80,13 @@ export function TopBar({
 	sprintChip,
 	collaborators = [],
 	collaborationActive = false,
+	isEphemeralDraft = false,
 }: TopBarProps) {
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [shareOpen, setShareOpen] = useState(false);
 	const [shortcutsOpen, setShortcutsOpen] = useState(false);
 	const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>(undefined);
+	const [settingsInitialAiSection, setSettingsInitialAiSection] = useState<AiSettingsSection | undefined>(undefined);
 	const [penName, setPenName] = useState(() => loadPenName());
 	const [profileImageDataUrl, setProfileImageDataUrl] = useState<string | null>(() => loadProfileImage());
 	const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -93,9 +99,10 @@ export function TopBar({
 		}
 
 		setSettingsInitialTab(settingsTabRequest);
+		setSettingsInitialAiSection(aiSettingsSectionRequest ?? undefined);
 		setSettingsOpen(true);
 		onSettingsTabRequestHandled?.();
-	}, [onSettingsTabRequestHandled, settingsTabRequest]);
+	}, [aiSettingsSectionRequest, onSettingsTabRequestHandled, settingsTabRequest]);
 
 	useEffect(() => {
 		if (!settingsOpen) {
@@ -157,7 +164,13 @@ export function TopBar({
 	}, [onToggleTypewriterMode]);
 
 	const saveIndicatorLabel =
-		saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving…' : 'Unsaved';
+		saveStatus === 'saved'
+			? 'Saved'
+			: saveStatus === 'saving'
+				? 'Saving…'
+				: isEphemeralDraft
+					? 'Draft'
+					: 'Unsaved';
 
 	return (
 		<>
@@ -319,9 +332,11 @@ export function TopBar({
 						resolvedTheme={resolvedTheme}
 						onThemeChange={onThemeChange}
 						initialTab={settingsInitialTab}
+						initialAiSection={settingsInitialAiSection}
 						onClose={() => {
 							setSettingsOpen(false);
 							setSettingsInitialTab(undefined);
+							setSettingsInitialAiSection(undefined);
 						}}
 					/>
 				</div>

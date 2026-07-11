@@ -6,7 +6,7 @@ import tailwind from '@astrojs/tailwind';
 // DECISION: GitHub Pages vs Vercel — either static host works; interactive HeroEditor is client-side only (no server routes).
 export default defineConfig({
 	output: 'static',
-	site: 'https://dastan.app',
+	site: 'https://dastanapp.com',
 	redirects: {
 		'/docs': '/getting-started',
 		'/docs/getting-started': '/getting-started',

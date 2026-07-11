@@ -14,7 +14,7 @@ export function getEditorTheme(isDark: boolean) {
 		statusButton: `${chrome.pill} disabled:opacity-40`,
 		warningPill: chrome.accentPill,
 		scriptPage: isDark
-			? 'rounded-sm border border-border bg-card shadow-[0_30px_80px_rgba(0,0,0,0.35)]'
+			? 'rounded-sm border border-gold/10 bg-paper-bright text-foreground shadow-[0_0_0_1px_rgba(201,162,39,0.08),0_24px_80px_rgba(0,0,0,0.55)]'
 			: 'rounded-sm border border-border bg-white shadow-[0_30px_80px_rgba(28,25,23,0.14)]',
 		compactSelect: isDark
 			? 'h-8 rounded-md border border-border bg-background px-2 text-xs uppercase tracking-[0.12em] text-foreground outline-none'
@@ -43,10 +43,12 @@ export function getEditorTheme(isDark: boolean) {
 		docActive: isDark ? 'border-primary/60 bg-primary/10' : 'border-primary/50 bg-primary/10',
 		docIdle: isDark ? 'border-border bg-card hover:border-border/80' : 'border-border bg-card hover:border-border/80',
 		aiPanel: isDark
-			? 'border-border bg-card text-foreground'
+			? 'border-border bg-ink-soft text-foreground'
 			: 'border-border bg-[#f8f5ef] text-foreground',
 		aiTabBar: chrome.tabBar,
-		aiTabActive: isDark ? 'bg-muted text-foreground' : 'bg-card text-foreground',
+		aiTabActive: isDark
+			? 'bg-card text-foreground shadow-[inset_0_-2px_0_0_hsl(var(--primary))]'
+			: 'bg-card text-foreground shadow-[inset_0_-2px_0_0_hsl(var(--primary))]',
 		aiTabIdle: `${chrome.mutedText} hover:bg-accent/60 hover:text-foreground`,
 		aiIconBtn: `flex shrink-0 items-center justify-center rounded p-1 ${chrome.mutedText} transition hover:bg-accent hover:text-accent-foreground`,
 		aiInputShell: isDark ? 'border-t border-border bg-card' : 'border-t border-border bg-[#f8f5ef]',

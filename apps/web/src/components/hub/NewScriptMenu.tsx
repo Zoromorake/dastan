@@ -28,6 +28,7 @@ interface NewScriptMenuProps {
 	size?: 'sm' | 'default';
 	appearance?: 'primary' | 'outline';
 	onStartScratch: () => void;
+	onStartGuide?: () => void;
 	onCreateTemplate: (template: ScriptTemplate) => void;
 	onImport: (file: File) => void;
 }
@@ -46,6 +47,7 @@ export function NewScriptMenu({
 	size = 'default',
 	appearance = 'primary',
 	onStartScratch,
+	onStartGuide = () => {},
 	onCreateTemplate,
 	onImport,
 }: NewScriptMenuProps) {
@@ -83,6 +85,14 @@ export function NewScriptMenu({
 					>
 						<FileText size={14} />
 						Start from scratch
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						onClick={() => {
+							onStartGuide();
+						}}
+					>
+						<FilePlus size={14} />
+						Start with a guide
 					</DropdownMenuItem>
 					<DropdownMenuItem
 						onClick={() => {

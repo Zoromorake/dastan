@@ -44,7 +44,7 @@ export function getHubTheme(isDark: boolean) {
 		navActive: 'border-l-2 border-primary bg-accent font-medium text-foreground',
 		navItem: 'border-l-2 border-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground',
 		createMenu: 'border border-border bg-popover text-popover-foreground',
-		filterPillActive: isDark ? 'bg-primary/15 text-primary' : 'bg-primary/10 text-amber-700',
+		filterPillActive: isDark ? 'bg-gold/15 text-gold' : 'bg-gold/10 text-amber-800',
 		filterPill: 'text-muted-foreground hover:bg-accent hover:text-foreground',
 	};
 }

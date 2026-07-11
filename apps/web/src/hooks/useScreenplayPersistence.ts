@@ -13,6 +13,13 @@ import {
 import { getCurrentBlockIndex, getEditorBlockType, setBlockType, splitToBlockType } from '../editor/commands';
 import { recordWordCountDelta, startWritingSession } from '../utils/writing-stats';
 import { loadTrackWritingStats } from '../utils/user-settings';
+import { recordDocumentSessionDelta } from '../utils/document-session-stats';
+import {
+	discardEphemeralDocument,
+	getEphemeralDocument,
+	updateEphemeralDocument,
+} from '../utils/ephemeral-documents';
+import { shouldPersistEphemeralDocument } from '../utils/ephemeral-documents-policy';
 
 export function useScreenplayPersistence(documentId: string | undefined) {
 	const { storage } = useDastanApp();
@@ -44,21 +51,46 @@ export function useScreenplayPersistence(documentId: string | undefined) {
 		setSaveStatus('saving');
 
 		const nextContent = editor.getJSON();
+		const blockIndex = getCurrentBlockIndex(editor);
 		const { snapshot, nextContent: persistedContent } = prepareDocumentPersist({
 			currentDocument,
 			content: nextContent,
 			previousContent: previousContentRef.current,
 		});
+		const snapshotWithCursor = {
+			...snapshot,
+			lastCursorBlockIndex: blockIndex,
+		};
 
 		if (loadTrackWritingStats()) {
 			recordWordCountDelta(previousContentRef.current, persistedContent);
+			recordDocumentSessionDelta(snapshotWithCursor.id, previousContentRef.current, persistedContent);
 		}
 		previousContentRef.current = persistedContent;
 
-		await storage.documents.save(snapshot);
-		setDocument(snapshot);
+		const ephemeral = getEphemeralDocument(snapshotWithCursor.id);
+
+		if (ephemeral) {
+			updateEphemeralDocument(snapshotWithCursor);
+
+			if (shouldPersistEphemeralDocument(snapshotWithCursor)) {
+				await storage.documents.save(snapshotWithCursor);
+				discardEphemeralDocument(snapshotWithCursor.id);
+				setDocument(snapshotWithCursor);
+				setSaveStatus('saved');
+			} else {
+				setDocument(snapshotWithCursor);
+				setSaveStatus('unsaved');
+			}
+
+			loadedDocumentIdRef.current = snapshotWithCursor.id;
+			return;
+		}
+
+		await storage.documents.save(snapshotWithCursor);
+		setDocument(snapshotWithCursor);
 		setSaveStatus('saved');
-		loadedDocumentIdRef.current = snapshot.id;
+		loadedDocumentIdRef.current = snapshotWithCursor.id;
 
 		saveCountSinceSnapshotRef.current += 1;
 		const now = Date.now();
@@ -67,7 +99,7 @@ export function useScreenplayPersistence(documentId: string | undefined) {
 			now - lastAutoSnapshotRef.current >= AUTO_SNAPSHOT_INTERVAL_MS;
 
 		if (shouldSnapshot) {
-			await storage.versions.saveSnapshot(snapshot);
+			await storage.versions.saveSnapshot(snapshotWithCursor);
 			lastAutoSnapshotRef.current = now;
 			saveCountSinceSnapshotRef.current = 0;
 		}
@@ -118,7 +150,8 @@ export function useScreenplayPersistence(documentId: string | undefined) {
 				return;
 			}
 
-			const loadedDocument = await storage.documents.get(documentId);
+			const ephemeralDocument = getEphemeralDocument(documentId);
+			const loadedDocument = ephemeralDocument ?? (await storage.documents.get(documentId));
 
 			if (cancelled) {
 				return;

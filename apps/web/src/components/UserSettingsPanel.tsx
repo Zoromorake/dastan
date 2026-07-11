@@ -16,11 +16,7 @@ import { AddressBookPanel } from './AddressBookPanel';
 import { CloudAccountSection } from './settings/CloudAccountSection';
 import { isDevEditorAiEnabled } from '../utils/dev-editor-ai';
 import { LocalOnlyModal } from './settings/LocalOnlyModal';
-import {
-	AI_KEY_PROVIDERS,
-	AiProviderKeyCard,
-	verifyAiProvider,
-} from './settings/AiProviderKeyCard';
+import { AiSlashCommandsSettings } from './settings/AiSlashCommandsSettings';
 import {
 	loadUserSettings,
 	SCRIPT_TEMPLATE_LABELS,
@@ -31,7 +27,16 @@ import {
 	userSettingsStorageKey,
 } from '../utils/user-settings';
 import { hasAcknowledgedLocalOnlyMode } from '../utils/local-identity';
+import { EtymologyLine } from './EtymologyLine';
 import { useDastanApp } from '../context/DastanAppProvider';
+import type { AiSettingsSection } from '../utils/ai-settings-sections';
+import { AI_SETTINGS_SECTION_IDS } from '../utils/ai-settings-sections';
+import { loadInteractionMode, saveInteractionMode, type AiInteractionMode } from '../utils/ai-interaction-mode';
+import {
+	AI_KEY_PROVIDERS,
+	AiProviderKeyCard,
+	verifyAiProvider,
+} from './settings/AiProviderKeyCard';
 
 export type { SettingsTab, UserThemeSetting };
 
@@ -41,6 +46,7 @@ interface UserSettingsPanelProps {
 	onThemeChange: (theme: UserThemeSetting) => void;
 	onClose: () => void;
 	initialTab?: SettingsTab;
+	initialAiSection?: AiSettingsSection;
 }
 
 const settingsTabs: Array<{ key: SettingsTab; label: string }> = [
@@ -90,7 +96,7 @@ function BinaryChoice({
 	);
 }
 
-export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose, initialTab }: UserSettingsPanelProps) {
+export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose, initialTab, initialAiSection }: UserSettingsPanelProps) {
 	const { entitlements } = useDastanApp();
 	const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'profile');
 	const [settings, setSettings] = useState<UserSettingsState>(() => loadUserSettings());
@@ -131,6 +137,16 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 
 		setActiveTab(initialTab);
 	}, [initialTab]);
+
+	useEffect(() => {
+		if (!initialAiSection) {
+			return;
+		}
+
+		const id = AI_SETTINGS_SECTION_IDS[initialAiSection];
+		const element = document.getElementById(id);
+		element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}, [initialAiSection, activeTab]);
 
 	const activeTabLabel = settingsTabs.find((tab) => tab.key === activeTab)?.label ?? 'Settings';
 	const planLabel = entitlements.plan();
@@ -246,6 +262,11 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 								/>
 							</SettingsField>
 
+							<div className={`rounded-xl border px-4 py-3 ${ui.surface}`}>
+								<p className={`mb-2 text-sm font-medium ${ui.label}`}>About the name</p>
+								<EtymologyLine />
+							</div>
+
 							<CloudAccountSection theme={ui} />
 						</div>
 					) : null}
@@ -320,16 +341,16 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 							/>
 
 							<div>
-								<BinaryChoice
-									label="Typewriter Mode"
-									value={settings.typewriterMode}
-									theme={ui}
-									onChange={(value) => setSettings((current) => ({ ...current, typewriterMode: value }))}
-								/>
-								<p className={`mt-2 text-xs ${ui.muted}`}>Keeps the current line vertically centered as you type.</p>
-							</div>
+							<BinaryChoice
+								label="Typewriter Mode"
+								value={settings.typewriterMode}
+								theme={ui}
+								onChange={(value) => setSettings((current) => ({ ...current, typewriterMode: value }))}
+							/>
+							<p className={`mt-2 text-xs ${ui.muted}`}>Keeps the current line vertically centered as you type.</p>
+						</div>
 
-							<p className={`text-sm ${ui.muted}`}>
+						<p className={`text-sm ${ui.muted}`}>
 								<a
 									className="underline underline-offset-2 hover:text-foreground"
 									href={import.meta.env.VITE_DASTAN_DOCS_URL ?? 'https://docs.dastan.app'}
@@ -343,7 +364,7 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 					) : null}
 
 					{activeTab === 'ai' ? (
-						<div className="mx-auto grid max-w-2xl gap-4">
+						<div className="mx-auto grid max-w-2xl gap-6">
 							<div className={`rounded-xl border px-4 py-3 text-sm ${isDark ? 'border-slate-700 bg-slate-800/40 text-slate-300' : 'border-stone-200 bg-stone-50 text-stone-700'}`}>
 								<p className="font-medium">Plan: {planLabel}</p>
 								<p className={`mt-1 text-xs ${ui.muted}`}>
@@ -352,53 +373,123 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 										? isDevEditorAiEnabled()
 											? 'Editor AI (agentic editing) is enabled in this dev build.'
 											: 'Editor AI (agentic editing) is enabled for your account.'
-										: 'Ask and Planner modes work for everyone. Editor AI (agentic script edits) is available with your own API key — no cloud account required.'}
+										: 'Ask and Planner modes work for everyone. Editor AI is available with your own API key — no cloud account required.'}
 								</p>
 							</div>
 
-							{AI_KEY_PROVIDERS.map((provider) => (
+							<section className="scroll-mt-4 space-y-3" id={AI_SETTINGS_SECTION_IDS.providers}>
+								<h3 className={`text-sm font-semibold ${ui.label}`}>Providers &amp; Keys</h3>
+								{AI_KEY_PROVIDERS.map((provider) => (
+									<AiProviderKeyCard
+										key={provider}
+										provider={provider}
+										settings={aiSettings}
+										isDark={isDark}
+										fieldClass={ui.field}
+										labelClass={ui.label}
+										mutedClass={ui.muted}
+										verifyStatus={verifyStatus.provider === provider ? verifyStatus.message : null}
+										onSettingsChange={setAiSettings}
+										onVerify={handleVerify}
+									/>
+								))}
 								<AiProviderKeyCard
-									key={provider}
-									provider={provider}
+									provider="ollama"
 									settings={aiSettings}
 									isDark={isDark}
 									fieldClass={ui.field}
 									labelClass={ui.label}
 									mutedClass={ui.muted}
-									verifyStatus={verifyStatus.provider === provider ? verifyStatus.message : null}
+									verifyStatus={verifyStatus.provider === 'ollama' ? verifyStatus.message : null}
 									onSettingsChange={setAiSettings}
 									onVerify={handleVerify}
 								/>
-							))}
+							</section>
 
-							<AiProviderKeyCard
-								provider="ollama"
-								settings={aiSettings}
-								isDark={isDark}
-								fieldClass={ui.field}
-								labelClass={ui.label}
-								mutedClass={ui.muted}
-								verifyStatus={verifyStatus.provider === 'ollama' ? verifyStatus.message : null}
-								onSettingsChange={setAiSettings}
-								onVerify={handleVerify}
-							/>
+							<section className="scroll-mt-4 space-y-3" id={AI_SETTINGS_SECTION_IDS.models}>
+								<h3 className={`text-sm font-semibold ${ui.label}`}>Models</h3>
+								<SettingsField label="Default model" theme={ui}>
+									<Input
+										className={ui.field}
+										value={aiSettings.defaultModel}
+										onChange={(event) =>
+											setAiSettings((current) => ({ ...current, defaultModel: event.target.value }))
+										}
+									/>
+								</SettingsField>
+								<p className={`text-xs ${ui.muted}`}>
+									Auto picks the best configured model per request. Per-script defaults live in the chat overflow menu.
+								</p>
+							</section>
 
-							<SettingsField label="Writing Instructions" theme={ui}>
-								<textarea
-									className={`min-h-32 px-3 py-2 text-sm ${ui.field}`}
-									placeholder="Always write in present tense. My protagonist is morally ambiguous. I write grounded thrillers — avoid sci-fi conventions."
-									value={aiSettings.globalRules}
-									onChange={(event) =>
-										setAiSettings((current) => ({
-											...current,
-											globalRules: event.target.value,
-										}))
-									}
+							<section className="scroll-mt-4 space-y-3" id={AI_SETTINGS_SECTION_IDS.behavior}>
+								<h3 className={`text-sm font-semibold ${ui.label}`}>Behavior</h3>
+								<SettingsField label="Default interaction mode" theme={ui}>
+									<select
+										className={`h-10 w-full px-3 text-sm ${ui.field}`}
+										value={loadInteractionMode('planner')}
+										onChange={(event) => saveInteractionMode(event.target.value as AiInteractionMode)}
+									>
+										<option value="ask">Ask</option>
+										<option value="planner">Planner</option>
+										<option value="editor">Editor</option>
+									</select>
+								</SettingsField>
+								<SettingsField label="Slash commands" theme={ui}>
+									<AiSlashCommandsSettings theme={ui} />
+								</SettingsField>
+								<SettingsField label="Global writer rules" theme={ui}>
+									<textarea
+										className={`min-h-32 px-3 py-2 text-sm ${ui.field}`}
+										placeholder="Always write in present tense…"
+										value={aiSettings.globalRules}
+										onChange={(event) =>
+											setAiSettings((current) => ({
+												...current,
+												globalRules: event.target.value,
+											}))
+										}
+									/>
+								</SettingsField>
+								<BinaryChoice
+									label="Default include script context"
+									value={aiSettings.includeScriptContext}
+									theme={ui}
+									onChange={(value) => setAiSettings((current) => ({ ...current, includeScriptContext: value }))}
+								/>
+								<BinaryChoice
+									label="Default include workspace context"
+									value={aiSettings.includeWorkspaceContext}
+									theme={ui}
+									onChange={(value) => setAiSettings((current) => ({ ...current, includeWorkspaceContext: value }))}
+								/>
+							</section>
+
+							<section className="scroll-mt-4 space-y-3" id={AI_SETTINGS_SECTION_IDS.memory}>
+								<h3 className={`text-sm font-semibold ${ui.label}`}>Memory</h3>
+								<BinaryChoice
+									label="Suggest memories from chat"
+									value={aiSettings.autoSuggestMemories}
+									theme={ui}
+									onChange={(value) => setAiSettings((current) => ({ ...current, autoSuggestMemories: value }))}
 								/>
 								<p className={`text-xs ${ui.muted}`}>
-									Applied to every AI response. Describe your voice, genre, and any standing rules.
+									Suggestions land in the memory drawer for review — they never join context until approved.
 								</p>
-							</SettingsField>
+							</section>
+
+							<section className="scroll-mt-4 space-y-3" id={AI_SETTINGS_SECTION_IDS['today-panel']}>
+								<h3 className={`text-sm font-semibold ${ui.label}`}>Today Panel</h3>
+								<BinaryChoice
+									label="AI in the Today panel"
+									value={settings.aiTodayPanel}
+									theme={ui}
+									onChange={(value) => setSettings((current) => ({ ...current, aiTodayPanel: value }))}
+								/>
+								<p className={`text-xs ${ui.muted}`}>
+									When enabled and a provider key exists, shows one cached line per day in the hub.
+								</p>
+							</section>
 
 							<button
 								className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-medium ${isDark ? 'border-slate-700 text-slate-200' : 'border-stone-200 text-stone-800'}`}
@@ -410,41 +501,18 @@ export function UserSettingsPanel({ theme, resolvedTheme, onThemeChange, onClose
 							</button>
 
 							{advancedOpen ? (
-								<div className="grid gap-4">
-									<SettingsField label="Chat API URL" theme={ui}>
-										<Input
-											className={ui.field}
-											value={aiSettings.chatApiUrl}
-											onChange={(event) =>
-												setAiSettings((current) => ({
-													...current,
-													chatApiUrl: event.target.value,
-												}))
-											}
-										/>
-									</SettingsField>
-
-									<BinaryChoice
-										label="Suggest memories from chat"
-										value={aiSettings.autoSuggestMemories}
-										theme={ui}
-										onChange={(value) => setAiSettings((current) => ({ ...current, autoSuggestMemories: value }))}
+								<SettingsField label="Chat API URL" theme={ui}>
+									<Input
+										className={ui.field}
+										value={aiSettings.chatApiUrl}
+										onChange={(event) =>
+											setAiSettings((current) => ({
+												...current,
+												chatApiUrl: event.target.value,
+											}))
+										}
 									/>
-
-									<BinaryChoice
-										label="Include Script Context"
-										value={aiSettings.includeScriptContext}
-										theme={ui}
-										onChange={(value) => setAiSettings((current) => ({ ...current, includeScriptContext: value }))}
-									/>
-
-									<BinaryChoice
-										label="Include Workspace Context"
-										value={aiSettings.includeWorkspaceContext}
-										theme={ui}
-										onChange={(value) => setAiSettings((current) => ({ ...current, includeWorkspaceContext: value }))}
-									/>
-								</div>
+								</SettingsField>
 							) : null}
 
 							<div className="flex flex-wrap items-center gap-3">

@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { HubEmptyMark } from './HubEmptyMark';
 import type { ScreenplayDocumentRecord, ScreenplayProjectRecord } from '../../types';
 import { formatRelativeDate } from '../../utils/hub-utils';
 import { getHubTheme } from '../../utils/hub-theme';
@@ -138,6 +139,7 @@ export function HubTrashPanel({
 
       {isEmpty ? (
         <div className={`rounded-xl border border-dashed p-12 text-center ${hub.dashed}`}>
+          <HubEmptyMark className="mb-4" />
           <p className={`mb-2 text-base font-semibold ${hub.panelTitle}`}>Trash is empty</p>
           <p className={`text-sm ${hub.panelMuted}`}>
             Items you delete from the library appear here until restored or permanently removed.

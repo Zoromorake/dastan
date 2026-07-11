@@ -1,4 +1,7 @@
 ---
+import CapturePlaceholder from '../CapturePlaceholder.astro';
+import { khatamSvgMarkup } from '../../lib/khatam';
+
 const revisions = [
 	{ color: 'var(--revision-white)', label: 'White' },
 	{ color: 'var(--revision-blue)', label: 'Blue' },
@@ -13,13 +16,15 @@ const features = [
 	'OMITTED scenes',
 	'Change marks against revision baselines',
 	'Scene, character, and location reports',
-	'Industry PDF and FDX export',
+	'PDF and FDX export with revision options',
 ];
+
+const khatamMarker = `url("data:image/svg+xml,${encodeURIComponent(khatamSvgMarkup({ opacity: 0.85, color: '#c9a227' }))}")`;
 ---
 
 <section class="production reveal" id="production">
-	<p class="slugline section-slug">INT. PRODUCTION OFFICE — DAY</p>
-	<h2 class="section-title">Production dialect, not toy formatting</h2>
+	<p class="slugline section-slug">INT. PRODUCTION OFFICE - DAY</p>
+	<h2 class="section-title">Production-minded formatting</h2>
 
 	<div class="production__strip" role="list" aria-label="Revision set colors">
 		{
@@ -32,16 +37,16 @@ const features = [
 		}
 	</div>
 
-	<ul class="production__list">
+	<ul class="production__list" style={`--khatam-marker: ${khatamMarker}`}>
 		{features.map((feature) => <li>{feature}</li>)}
 	</ul>
 
-	<!--
-		ARIF: capture revision mode with colored border + margin change marks on a short scene,
-		or PDF export dialog with revision options — dark UI, paper page visible
-	-->
-	<div class="production__crop" aria-hidden="true">
-		<span>ARIF: revision marks / PDF export crop — production office vibe</span>
+	<div class="production__crop">
+		<!--
+			ARIF: capture revision mode with colored border + margin change marks on a short scene,
+			or PDF export dialog with revision options, dark UI, paper page visible
+		-->
+		<CapturePlaceholder name="Revision marks" />
 	</div>
 </section>
 
@@ -65,7 +70,7 @@ const features = [
 		gap: 0.45rem;
 		padding: 0.35rem 0.65rem;
 		border-radius: 999px;
-		border: 1px solid #292524;
+		border: 1px solid #2a3158;
 		background: var(--ink-soft);
 		font-size: 0.78rem;
 		text-transform: uppercase;
@@ -82,23 +87,38 @@ const features = [
 
 	.production__list {
 		margin: 0 0 1.25rem;
-		padding-left: 1.1rem;
+		padding-left: 0;
+		list-style: none;
 		color: #d6d3d1;
 		display: grid;
-		gap: 0.35rem;
+		gap: 0.45rem;
+	}
+
+	.production__list li {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.55rem;
+		padding-left: 0.15rem;
+	}
+
+	.production__list li::before {
+		content: '';
+		flex-shrink: 0;
+		width: 0.75rem;
+		height: 0.75rem;
+		margin-top: 0.2rem;
+		background-image: var(--khatam-marker);
+		background-size: contain;
+		background-repeat: no-repeat;
+		background-position: center;
+		color: var(--gold);
 	}
 
 	.production__crop {
 		aspect-ratio: 21 / 9;
-		border: 1px dashed #57534e;
+		border: 1px solid #2a3158;
 		border-radius: 0.35rem;
-		display: grid;
-		place-items: center;
-		padding: 1rem;
-		text-align: center;
-		font-family: 'Courier Prime', monospace;
-		font-size: 0.65rem;
-		color: #78716c;
 		background: var(--ink-soft);
+		overflow: hidden;
 	}
 </style>
