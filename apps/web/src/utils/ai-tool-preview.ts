@@ -149,3 +149,81 @@ export interface ToolPreviewState extends ToolInvocationPreview {
 	status: ToolPreviewStatus;
 	snapshotId?: string;
 }
+
+const TERMINAL_PREVIEW_STATUSES = new Set<ToolPreviewStatus>(['accepted', 'rejected', 'failed', 'skipped']);
+
+/** Map AI SDK tool-part state → card status. Client tools are "prepared", not applied. */
+export function mapToolPartStateToPreviewStatus(
+	state: string,
+	options?: { streamActive?: boolean },
+): ToolPreviewStatus {
+	const streamActive = options?.streamActive ?? false;
+
+	switch (state) {
+		case 'input-streaming':
+			return 'running';
+		case 'output-error':
+		case 'output-denied':
+			return 'failed';
+		case 'input-available':
+		case 'output-available':
+		case 'approval-requested':
+		case 'approval-responded':
+			return 'preview';
+		case 'unknown':
+		default:
+			return streamActive ? 'running' : 'preview';
+	}
+}
+
+export function buildToolActivityLabel(previews: ToolPreviewState[]): string | null {
+	if (previews.length === 0) {
+		return null;
+	}
+
+	const running = previews.filter((item) => item.status === 'running').length;
+	const ready = previews.filter((item) => item.status === 'preview').length;
+	const total = previews.length;
+
+	if (running > 0) {
+		const prepared = ready;
+		const current = Math.min(prepared + 1, total);
+		return total === 1
+			? 'Preparing edit…'
+			: `Preparing edit ${current} of ${total}…`;
+	}
+
+	if (ready > 0 && ready === total) {
+		return total === 1 ? '1 edit prepared' : `${total} of ${total} edits prepared`;
+	}
+
+	if (ready > 0) {
+		return `${ready} of ${total} edits prepared`;
+	}
+
+	return null;
+}
+
+/** Merge live tool parts into existing previews without clobbering accept/reject decisions. */
+export function mergeLiveToolPreviews(
+	existing: ToolPreviewState[] | undefined,
+	incoming: ToolPreviewState[],
+): ToolPreviewState[] {
+	const previousById = new Map((existing ?? []).map((item) => [item.id, item]));
+
+	return incoming.map((item) => {
+		const previous = previousById.get(item.id);
+
+		if (previous && TERMINAL_PREVIEW_STATUSES.has(previous.status)) {
+			return previous;
+		}
+
+		return item;
+	});
+}
+
+export function markRunningToolsSkipped(previews: ToolPreviewState[]): ToolPreviewState[] {
+	return previews.map((item) =>
+		item.status === 'running' ? { ...item, status: 'skipped' as const } : item,
+	);
+}

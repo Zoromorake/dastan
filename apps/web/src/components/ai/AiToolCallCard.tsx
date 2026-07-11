@@ -17,7 +17,7 @@ interface AiToolCallCardProps {
 }
 
 const STATUS_LABELS: Record<ToolPreviewStatus, string> = {
-	running: 'Running…',
+	running: 'Preparing…',
 	preview: 'Preview ready',
 	accepted: 'Accepted',
 	rejected: 'Rejected',

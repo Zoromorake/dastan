@@ -122,27 +122,89 @@ export function executeAiTool(
 	}
 }
 
-export function extractToolInvocations(message: {
-	parts: Array<{ type: string; toolName?: string; input?: unknown; args?: unknown }>;
-}): Array<{ toolName: string; input: unknown }> {
-	const invocations: Array<{ toolName: string; input: unknown }> = [];
+export type StreamingToolPartState =
+	| 'input-streaming'
+	| 'input-available'
+	| 'output-available'
+	| 'output-error'
+	| 'approval-requested'
+	| 'approval-responded'
+	| 'output-denied'
+	| 'unknown';
 
-	for (const part of message.parts) {
-		if (part.type === 'tool-invocation' && part.toolName) {
-			invocations.push({
-				toolName: part.toolName,
-				input: part.input ?? part.args ?? {},
-			});
+export interface ExtractedToolPart {
+	toolCallId: string;
+	toolName: string;
+	input: unknown;
+	state: StreamingToolPartState;
+}
+
+type LooseToolPart = {
+	type: string;
+	toolName?: string;
+	toolCallId?: string;
+	state?: string;
+	input?: unknown;
+	args?: unknown;
+};
+
+function resolveToolName(part: LooseToolPart): string | null {
+	if (part.type === 'dynamic-tool' || part.type === 'tool-invocation') {
+		return part.toolName?.trim() || null;
+	}
+
+	if (part.type.startsWith('tool-')) {
+		return part.toolName?.trim() || part.type.slice('tool-'.length) || null;
+	}
+
+	return null;
+}
+
+function resolveToolPartState(state: string | undefined): StreamingToolPartState {
+	switch (state) {
+		case 'input-streaming':
+		case 'input-available':
+		case 'output-available':
+		case 'output-error':
+		case 'approval-requested':
+		case 'approval-responded':
+		case 'output-denied':
+			return state;
+		default:
+			return 'unknown';
+	}
+}
+
+/** Extract tool parts with stable ids and streaming state (AI SDK 5/6 UIMessage shapes). */
+export function extractToolParts(message: {
+	parts: Array<LooseToolPart>;
+}): ExtractedToolPart[] {
+	const parts: ExtractedToolPart[] = [];
+
+	for (const [index, part] of message.parts.entries()) {
+		const toolName = resolveToolName(part);
+
+		if (!toolName) {
 			continue;
 		}
 
-		if (part.type.startsWith('tool-') && 'toolName' in part && part.toolName) {
-			invocations.push({
-				toolName: part.toolName,
-				input: part.input ?? part.args ?? {},
-			});
-		}
+		parts.push({
+			toolCallId: part.toolCallId?.trim() || `${toolName}-${index}`,
+			toolName,
+			input: part.input ?? part.args ?? {},
+			state: resolveToolPartState(part.state),
+		});
 	}
 
-	return invocations;
+	return parts;
+}
+
+export function extractToolInvocations(message: {
+	parts: Array<LooseToolPart>;
+}): Array<{ toolName: string; input: unknown; toolCallId: string }> {
+	return extractToolParts(message).map((part) => ({
+		toolName: part.toolName,
+		input: part.input,
+		toolCallId: part.toolCallId,
+	}));
 }

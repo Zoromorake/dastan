@@ -8,7 +8,7 @@ Deferred work tracked from upgrade passes. Not scheduled — revisit when priori
 
 Remaining:
 
-- Replace remaining `<!-- ARIF: ... -->` capture slots with real screenshots (hero video `public/hero-demo.webm`, craft bento, production crop) — placeholder cards ship in Pass 4
+- Replace remaining `<!-- ARIF: ... -->` capture slots with real screenshots (hero video `public/hero-demo.webm`, craft bento, production crop) — placeholder cards ship in Pass 4. Needs recorded product captures (not code).
 
 ## True WYSIWYG screenplay pagination
 
@@ -39,22 +39,27 @@ When implementing:
 
 ## CI / deploy workflows
 
-Re-enable `.github/workflows/ci.yml` and `deploy-supabase.yml` push triggers when the project is ready for automated gates. `SUPABASE_PROJECT_REF` must be set as a repository secret for deploy. `apps/site` build is in CI (`npm run site:build`).
-
-## Pass 6 — AI Panel Overhaul (Jul 2026)
-
-**Shipped (Phases 1–6 core + deferred follow-ups).** Mode/model dropdown toolbar, context meter + inspector with script-section toggles (including opening/ending), per-document prefs, slash commands in settings, rules drawer, memory drawer with suggested review, settings AI sections with deep links, batch + inline tool review cards, library/script history separator, per-script model overflow action, keyword-ranked approved memories in context, Cmd/Ctrl+. mode cycle, Cmd/Ctrl+L focus input, Esc stops streaming.
+CI push triggers on `main` are already enabled (`.github/workflows/ci.yml`).
 
 Still deferred:
 
-- **ScreenplayBlock rendering in AI replies** — Courier insert-via-preview flow not built; plain markdown + insert actions remain
-- **Streaming tool activity line** — inline cards appear after completion; live per-tool status during stream not built
+- Re-enable `.github/workflows/deploy-supabase.yml` push triggers when ready for automated function deploys. `SUPABASE_PROJECT_REF` + `SUPABASE_ACCESS_TOKEN` must be set as repository secrets. Job is currently `workflow_dispatch` + `if: false`.
+
+## Pass 6 — AI Panel Overhaul (Jul 2026)
+
+**Shipped (Phases 1–6 core + follow-ups).** Mode/model dropdown toolbar, context meter + inspector, slash commands, rules/memory drawers, tool review cards, streaming tool activity line, ScreenplayBlock Courier rendering in AI replies with Insert → preview-accept.
+
+**Shipped follow-ups:**
+
+- Streaming tool activity — live `running`/`preview` cards, activity label, Stop/Esc → skipped, stable `toolCallId`s
+- ScreenplayBlock in AI replies — fenced + heuristic segmentation, chat-scaled Courier layout, chunk Insert via `planner_insert` preview (Ask/Planner/Editor in editor panel)
 
 ## Pass 5 — Web app UX (Phases 1–6, Jul 2026)
 
-**Shipped.** Lapis/gold palette, dark page glow, khatam (hub divider + empty mark only), etymology in settings, slate-first hub with poster cards (including upload), Today panel with deterministic briefing + optional AI line, Development Room guide, ephemeral-until-touched drafts with 48h sweep, untitled dedupe, Cmd/Ctrl+K palette (hub + editor), FADE OUT celebration. Removed dead `HubScriptsPanel` / `ScriptCard`.
+**Shipped.** Lapis/gold palette, dark page glow, khatam, etymology, slate-first hub, Today panel, Development Room guide, ephemeral drafts + 48h sweep, untitled dedupe, Cmd/Ctrl+K palette, FADE OUT celebration.
+
+**Shipped follow-up:** Automated WCAG token contrast checks in `theme-contrast.test.ts` (light/dark body, card, paper, muted, primary button pairs).
 
 Deferred:
 
-- **Automated WCAG token audit** — Token pairs tuned manually; add scripted contrast check in CI if palette changes often
-- **Ephemeral tradeoff** — New scratch/guide scripts stay in memory until first meaningful touch; navigating away discards untouched blanks silently (logged here because full create-path refactor was avoided)
+- **Ephemeral tradeoff** — New scratch/guide scripts stay in memory until first meaningful touch; navigating away discards untouched blanks (sessionStorage backup + draft banner mitigate; full create-path refactor still avoided)

@@ -6,7 +6,9 @@ import { resolveModelOption } from '../../utils/ai-models';
 import type { AiMemory } from '../../utils/ai-memory-storage';
 import type { MemorySuggestion } from '../../hooks/useAiChat';
 import { AiToolCallCard } from './AiToolCallCard';
-import type { ToolPreviewState } from '../../utils/ai-tool-preview';
+import { ScreenplayBlock } from './ScreenplayBlock';
+import { buildToolActivityLabel, type ToolPreviewState } from '../../utils/ai-tool-preview';
+import { looksLikeScreenplayReply, splitAssistantContent } from '../../utils/ai-reply-screenplay';
 
 interface StarterPrompt {
 	label: string;
@@ -25,6 +27,7 @@ interface AiChatMessagesProps {
 	onStarterClick?: (text: string) => void;
 	selectionActive?: boolean;
 	onInsertText?: (text: string) => void;
+	onInsertScreenplayChunk?: (text: string) => void;
 	onReplaceSelection?: (text: string) => void;
 	autoInsertedMessageId?: string | null;
 	onUndoAutoInsert?: () => void;
@@ -231,6 +234,7 @@ interface ChatMessageRowProps {
 	onEditMessage?: (messageId: string, newText: string) => Promise<boolean>;
 	onRegenerate?: () => void;
 	onInsertText?: (text: string) => void;
+	onInsertScreenplayChunk?: (text: string) => void;
 	onReplaceSelection?: (text: string) => void;
 	onUndoAutoInsert?: () => void;
 	onAcceptTool?: (toolId: string) => void;
@@ -254,6 +258,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
 	onEditMessage,
 	onRegenerate,
 	onInsertText,
+	onInsertScreenplayChunk,
 	onReplaceSelection,
 	onUndoAutoInsert,
 	onAcceptTool,
@@ -265,6 +270,19 @@ const ChatMessageRow = memo(function ChatMessageRow({
 	const showStreamingCursor = isStreamingAssistant && isLastAssistant && text.trim().length > 0;
 	const showThinkingInline =
 		!isUser && isLastAssistant && (status === 'submitted' || status === 'streaming') && text.trim().length === 0;
+	const toolActivityLabel =
+		!isUser && isLastAssistant && (status === 'streaming' || status === 'submitted')
+			? buildToolActivityLabel(toolPreviews)
+			: null;
+	const contentSegments =
+		!isUser && text.trim()
+			? splitAssistantContent(text, {
+					streaming: isStreamingAssistant && isLastAssistant,
+				})
+			: [];
+	const hasScreenplaySegments = contentSegments.some((segment) => segment.kind === 'screenplay');
+	const entireMessageIsScreenplay =
+		hasScreenplaySegments && contentSegments.every((segment) => segment.kind === 'screenplay');
 	const usedModelLabel = !isUser ? formatUsedModelLabel(message) : null;
 	const mutedClass = isDark ? 'text-slate-500' : 'text-stone-500';
 	const actionBtnClass = isDark
@@ -346,7 +364,20 @@ const ChatMessageRow = memo(function ChatMessageRow({
 					className={`ai-chat-selectable text-sm leading-6 ${isDark ? 'text-slate-200' : 'text-stone-800'}`}
 					data-ai-chat-dark={isDark ? 'true' : 'false'}
 				>
-					<AssistantMarkdown text={text} />
+					{contentSegments.map((segment, index) =>
+						segment.kind === 'screenplay' ? (
+							<ScreenplayBlock
+								key={`screenplay-${index}`}
+								text={segment.text}
+								isDark={isDark}
+								onInsert={
+									onInsertScreenplayChunk ? () => onInsertScreenplayChunk(segment.text) : undefined
+								}
+							/>
+						) : (
+							<AssistantMarkdown key={`markdown-${index}`} text={segment.text} />
+						),
+					)}
 				</div>
 			) : null}
 			{showThinkingInline ? (
@@ -400,12 +431,19 @@ const ChatMessageRow = memo(function ChatMessageRow({
 						<Copy size={12} />
 						Copy
 					</button>
-					{onInsertText ? (
+					{onInsertText && !entireMessageIsScreenplay ? (
 						<button
 							className={actionBtnClass}
 							type="button"
 							onMouseDown={(event) => event.preventDefault()}
-							onClick={() => onInsertText(text)}
+							onClick={() => {
+								if (onInsertScreenplayChunk && looksLikeScreenplayReply(text)) {
+									onInsertScreenplayChunk(text);
+									return;
+								}
+
+								onInsertText(text);
+							}}
 						>
 							<CornerDownLeft size={12} />
 							Insert
@@ -436,8 +474,12 @@ const ChatMessageRow = memo(function ChatMessageRow({
 				</div>
 			) : null}
 
+			{toolActivityLabel ? (
+				<p className={`mt-3 text-[11px] tabular-nums ai-chat-chrome ${mutedClass}`}>{toolActivityLabel}</p>
+			) : null}
+
 			{toolPreviews.length > 0 ? (
-				<div className="mt-3 space-y-2 ai-chat-chrome">
+				<div className={`${toolActivityLabel ? 'mt-2' : 'mt-3'} space-y-2 ai-chat-chrome`}>
 					{toolPreviews.map((preview) => (
 						<AiToolCallCard
 							key={preview.id}
@@ -465,6 +507,7 @@ export function AiChatMessages({
 	onStarterClick,
 	selectionActive = false,
 	onInsertText,
+	onInsertScreenplayChunk,
 	onReplaceSelection,
 	autoInsertedMessageId = null,
 	onUndoAutoInsert,
@@ -567,6 +610,7 @@ export function AiChatMessages({
 					onEditMessage={onEditMessage}
 					onRegenerate={onRegenerate}
 					onInsertText={onInsertText}
+					onInsertScreenplayChunk={onInsertScreenplayChunk}
 					onReplaceSelection={onReplaceSelection}
 					onUndoAutoInsert={onUndoAutoInsert}
 					onAcceptTool={onAcceptTool}

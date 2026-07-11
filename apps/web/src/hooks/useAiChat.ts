@@ -196,7 +196,10 @@ interface UseAiChatOptions {
 	selectionText?: string | null;
 	activeBlockIndex?: number | null;
 	activeWorkspaceTab?: string | null;
-	onToolInvocations?: (invocations: Array<{ toolName: string; input: unknown }>, messageId: string) => void;
+	onToolInvocations?: (
+		invocations: Array<{ toolName: string; input: unknown; toolCallId: string }>,
+		messageId: string,
+	) => void;
 	onThreadChange: (thread: AiChatThread) => void;
 	onThreadCreated: (thread: AiChatThread) => void;
 }

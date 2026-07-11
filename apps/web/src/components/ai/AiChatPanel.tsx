@@ -16,6 +16,7 @@ import type { AiChatThread } from '../../utils/ai-memory-storage';
 import type { CollaboratorPresence } from '@dastan/plugin-api';
 import {
 	saveInteractionMode,
+	interactionModeEnablesTools,
 	type AiInteractionMode,
 } from '../../utils/ai-interaction-mode';
 import {
@@ -37,13 +38,19 @@ import { AiChatHistoryMenu } from './AiChatHistoryMenu';
 import { AiMemoryDrawer } from './AiMemoryDrawer';
 import { useDastanApp } from '../../context/DastanAppProvider';
 import { executeAiTool } from '../../utils/ai-tool-executor';
-import { formatToolPreview, type ToolPreviewState } from '../../utils/ai-tool-preview';
+import {
+	formatToolPreview,
+	mapToolPartStateToPreviewStatus,
+	markRunningToolsSkipped,
+	mergeLiveToolPreviews,
+	type ToolPreviewState,
+} from '../../utils/ai-tool-preview';
 import { useEditorCommands } from '../../context/EditorCommandContext';
 import { useScreenplayStore } from '../../store';
 import { getEditorTheme } from '../../utils/editor-theme';
 import { AiRulesDrawer } from './AiRulesDrawer';
 import { AiToolCallCard } from './AiToolCallCard';
-import { extractToolInvocations } from '../../utils/ai-tool-executor';
+import { extractToolParts } from '../../utils/ai-tool-executor';
 
 const PANEL_WIDTH_STORAGE_KEY = 'dastan.ai-panel-width';
 const MIN_PANEL_WIDTH = 280;
@@ -385,14 +392,20 @@ export function AiChatPanel({
 				return;
 			}
 
-			const previews = invocations.map((invocation, index) => ({
+			const previews = invocations.map((invocation) => ({
 				...formatToolPreview(invocation.toolName, invocation.input),
-				id: `${invocation.toolName}-${index}-${Date.now()}`,
+				id: invocation.toolCallId,
 				status: 'preview' as const,
 			}));
 
-			setPendingToolReview(previews);
-			setMessageToolPreviews((current) => ({ ...current, [messageId]: previews }));
+			setMessageToolPreviews((current) => {
+				const merged = mergeLiveToolPreviews(current[messageId], previews);
+				return { ...current, [messageId]: merged };
+			});
+			setPendingToolReview((current) => {
+				const merged = mergeLiveToolPreviews(current ?? undefined, previews);
+				return merged.filter((item) => item.status === 'preview' || item.status === 'failed');
+			});
 		},
 		onThreadChange: handleThreadChange,
 		onThreadCreated: handleThreadCreated,
@@ -403,6 +416,95 @@ export function AiChatPanel({
 			chat.refreshSettings();
 		}
 	}, [chat.refreshSettings, open]);
+
+	// Live tool cards + activity while args stream (editor mode only).
+	useEffect(() => {
+		if (variant !== 'editor' || !interactionModeEnablesTools(interactionMode)) {
+			return;
+		}
+
+		const lastMessage = chat.messages.at(-1);
+
+		if (!lastMessage || lastMessage.role !== 'assistant') {
+			return;
+		}
+
+		const parts = extractToolParts(lastMessage);
+
+		if (parts.length === 0) {
+			return;
+		}
+
+		const streamActive = chat.status === 'streaming' || chat.status === 'submitted';
+		const incoming = parts.map((part) => ({
+			...formatToolPreview(part.toolName, part.input),
+			id: part.toolCallId,
+			status: mapToolPartStateToPreviewStatus(part.state, { streamActive }),
+		}));
+
+		setMessageToolPreviews((current) => {
+			const merged = mergeLiveToolPreviews(current[lastMessage.id], incoming);
+			return { ...current, [lastMessage.id]: merged };
+		});
+
+		if (!streamActive) {
+			setPendingToolReview((current) => {
+				const preserved = (current ?? []).filter((item) =>
+					['accepted', 'rejected', 'skipped'].includes(item.status),
+				);
+				const ready = incoming.filter((item) => item.status === 'preview' || item.status === 'failed');
+				const byId = new Map([...preserved, ...ready].map((item) => [item.id, item]));
+				return [...byId.values()];
+			});
+		} else {
+			setPendingToolReview((current) => {
+				const existingById = new Map((current ?? []).map((item) => [item.id, item]));
+				for (const item of incoming) {
+					const previous = existingById.get(item.id);
+					if (previous && ['accepted', 'rejected', 'failed', 'skipped'].includes(previous.status)) {
+						continue;
+					}
+					if (item.status === 'preview') {
+						existingById.set(item.id, item);
+					}
+				}
+				const next = [...existingById.values()].filter(
+					(item) => item.status === 'preview' || item.status === 'failed',
+				);
+				return next.length > 0 ? next : current;
+			});
+		}
+	}, [chat.messages, chat.status, interactionMode, variant]);
+
+	const handleStopChat = useCallback(() => {
+		chat.stop();
+
+		const lastMessage = chat.messages.at(-1);
+
+		if (!lastMessage || lastMessage.role !== 'assistant') {
+			return;
+		}
+
+		setMessageToolPreviews((current) => {
+			const existing = current[lastMessage.id];
+
+			if (!existing?.length) {
+				return current;
+			}
+
+			return { ...current, [lastMessage.id]: markRunningToolsSkipped(existing) };
+		});
+		setPendingToolReview((current) => {
+			if (!current?.length) {
+				return current;
+			}
+
+			const next = markRunningToolsSkipped(current).filter(
+				(item) => item.status === 'preview' || item.status === 'failed',
+			);
+			return next.length > 0 ? next : null;
+		});
+	}, [chat]);
 
 	// ── Offer accept/reject for long-form planner script output ───────────────
 	useEffect(() => {
@@ -447,6 +549,32 @@ export function AiChatPanel({
 			[lastMessage.id]: [preview],
 		}));
 	}, [chat.messages, chat.status, editorCommands, interactionMode, variant]);
+
+	const handleInsertScreenplayChunk = useCallback(
+		(text: string) => {
+			if (variant !== 'editor' || !editorCommands) {
+				return;
+			}
+
+			const lastMessage = chat.messages.at(-1);
+			const messageId = lastMessage?.role === 'assistant' ? lastMessage.id : `screenplay-${Date.now()}`;
+			const preview: ToolPreviewState = {
+				id: `planner-insert-chunk-${Date.now()}`,
+				toolName: 'planner_insert',
+				input: { text },
+				summary: text.slice(0, 2000),
+				mutatesScript: true,
+				status: 'preview',
+			};
+
+			setPendingToolReview([preview]);
+			setMessageToolPreviews((current) => ({
+				...current,
+				[messageId]: [...(current[messageId] ?? []).filter((item) => item.id !== preview.id), preview],
+			}));
+		},
+		[chat.messages, editorCommands, variant],
+	);
 
 	const handleUndoAutoInsert = useCallback(() => {
 		if (!editorCommands) {
@@ -500,7 +628,7 @@ export function AiChatPanel({
 
 			if (event.key === 'Escape') {
 				if (chat.status === 'streaming' || chat.status === 'submitted') {
-					chat.stop();
+					handleStopChat();
 					return;
 				}
 
@@ -525,8 +653,8 @@ export function AiChatPanel({
 	}, [
 		chat.hasProviderConfigured,
 		chat.status,
-		chat.stop,
 		entitlements,
+		handleStopChat,
 		memoryDrawerOpen,
 		onClose,
 		open,
@@ -998,6 +1126,9 @@ export function AiChatPanel({
 								}
 							: undefined
 					}
+					onInsertScreenplayChunk={
+						variant === 'editor' && editorCommands ? handleInsertScreenplayChunk : undefined
+					}
 					onReplaceSelection={
 						(interactionMode === 'planner' || interactionMode === 'editor') && variant === 'editor' && editorCommands
 							? (text) => {
@@ -1119,7 +1250,7 @@ export function AiChatPanel({
 					onOpenMemories={() => setMemoryDrawerOpen(true)}
 					onOpenRules={() => setRulesDrawerOpen(true)}
 					onSubmit={chat.submitMessage}
-					onStop={chat.stop}
+					onStop={handleStopChat}
 				/>
 			</div>
 

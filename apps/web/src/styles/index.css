@@ -68,6 +68,78 @@
 	color: rgb(226 232 240);
 }
 
+/* Chat-scaled Courier screenplay blocks (narrower than site ScreenplayBlock). */
+.ai-chat-screenplay {
+	margin: 0.75rem 0;
+}
+
+.ai-chat-screenplay__page {
+	border-radius: 0.5rem;
+	border: 1px solid hsl(var(--border));
+	background: hsl(var(--paper));
+	padding: 0.75rem 0.85rem;
+	color: hsl(var(--ink));
+	font-family: 'Courier Prime', 'Courier New', Courier, monospace;
+	font-size: 0.78rem;
+	line-height: 1.45;
+	overflow-x: auto;
+}
+
+.ai-chat-screenplay--dark .ai-chat-screenplay__page {
+	color: hsl(var(--foreground));
+	background: hsl(var(--paper-bright));
+}
+
+.ai-chat-screenplay__line {
+	margin: 0.15rem 0;
+	white-space: pre-wrap;
+}
+
+.ai-chat-screenplay__line--scene_heading {
+	margin-top: 0.65rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.ai-chat-screenplay__line--action {
+	margin-left: 0;
+	max-width: 28rem;
+}
+
+.ai-chat-screenplay__line--character {
+	margin-top: 0.55rem;
+	margin-left: 3.5rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.ai-chat-screenplay__line--parenthetical {
+	margin-left: 2.75rem;
+	max-width: 14rem;
+}
+
+.ai-chat-screenplay__line--dialogue {
+	margin-left: 2rem;
+	max-width: 16rem;
+}
+
+.ai-chat-screenplay__line--transition {
+	margin-top: 0.55rem;
+	text-align: right;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.ai-chat-screenplay__line--shot,
+.ai-chat-screenplay__line--centered,
+.ai-chat-screenplay__line--general,
+.ai-chat-screenplay__line--lyrics {
+	margin-left: 0;
+}
+
 .ai-chat-chrome,
 .ai-chat-selectable .ai-chat-chrome,
 .ai-chat-selectable .ai-chat-chrome * {
